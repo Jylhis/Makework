@@ -1,11 +1,14 @@
-{ pkgs, lib, config, inputs, ... }:
+{ pkgs, ... }:
 
 {
   packages = [
     pkgs.cargo-mutants
   ];
 
-  languages.rust.enable = true;
+  languages.rust = {
+    enable = true;
+    channel = "stable";
+  };
 
   pre-commit.hooks = {
     clippy.enable = true;
