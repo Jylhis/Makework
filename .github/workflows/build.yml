@@ -15,9 +15,13 @@ jobs:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, llvm-tools-preview
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
       - name: Run Clippy
         run: cargo clippy --all-targets --message-format=json > clippy-report.json
+      - name: Run tests with coverage
+        run: cargo llvm-cov --lcov --output-path lcov.info
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v6
         env:
