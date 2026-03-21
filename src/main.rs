@@ -5,7 +5,7 @@ fn main() {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn it_runs() {
-        assert!(true);
+    fn main_runs_without_panic() {
+        super::main();
     }
 }
