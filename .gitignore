@@ -23,7 +23,11 @@ target
 # devenv
 .devenv*
 devenv.lock
+.pre-commit-config.yaml
 
+# Claude Code
+.claude/
+.mcp.json
 
 # Added by cargo
 
