@@ -1,0 +1,502 @@
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use crate::catalog::Catalog;
+use crate::config::MakeworkConfig;
+use crate::repository::{GitError, ParsedUrl, parse_remote_url};
+
+/// Information about a single git worktree, parsed from `git worktree list --porcelain`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorktreeInfo {
+    pub path: PathBuf,
+    pub branch: Option<String>,
+    pub is_bare: bool,
+}
+
+pub fn worktree_path(
+    config: &MakeworkConfig,
+    parsed_url: Option<&ParsedUrl>,
+    repo_name: &str,
+    branch: &str,
+) -> PathBuf {
+    let mut path = config.worktree_root.clone();
+
+    match parsed_url {
+        Some(url) => {
+            path.push(&url.host);
+            for segment in &url.segments {
+                path.push(segment);
+            }
+        }
+        None => {
+            path.push("local");
+            path.push(repo_name);
+        }
+    }
+
+    let sanitized = sanitize_branch_for_path(branch);
+    for part in sanitized.split('/') {
+        path.push(part);
+    }
+
+    path
+}
+
+/// Sanitize a branch/ref name for use as a filesystem path.
+///
+/// - Strips `refs/tags/` prefix for detached-HEAD tag refs.
+/// - Keeps slashes as directory separators (they become nested dirs).
+/// - Replaces filesystem-problematic characters (colons, spaces, backslashes,
+///   question marks, asterisks, angle brackets, pipes, double quotes) with underscores.
+/// - Collapses consecutive slashes and trims leading/trailing slashes.
+pub fn sanitize_branch_for_path(ref_name: &str) -> String {
+    // Strip refs/tags/ prefix for detached HEAD on tags
+    let name = ref_name.strip_prefix("refs/tags/").unwrap_or(ref_name);
+
+    let mut result = String::with_capacity(name.len());
+    for ch in name.chars() {
+        match ch {
+            ':' | ' ' | '\\' | '?' | '*' | '<' | '>' | '|' | '"' => result.push('_'),
+            _ => result.push(ch),
+        }
+    }
+
+    // Collapse consecutive slashes and trim leading/trailing slashes
+    result
+        .split('/')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+pub fn create_worktree(
+    bare_path: &Path,
+    branch: &str,
+    worktree_path: &Path,
+) -> Result<(), GitError> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(bare_path)
+        .arg("worktree")
+        .arg("add")
+        .arg(worktree_path)
+        .arg(branch)
+        .output()
+        .map_err(|e| GitError::Command {
+            cmd: format!(
+                "git -C {} worktree add {} {branch}",
+                bare_path.display(),
+                worktree_path.display()
+            ),
+            stderr: e.to_string(),
+        })?;
+
+    if !output.status.success() {
+        return Err(GitError::Command {
+            cmd: format!(
+                "git -C {} worktree add {} {branch}",
+                bare_path.display(),
+                worktree_path.display()
+            ),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
+    }
+
+    Ok(())
+}
+
+/// Remove a worktree and prune stale entries.
+///
+/// Shells out to `git -C <bare_path> worktree remove <worktree_path>` followed by
+/// `git -C <bare_path> worktree prune`.
+pub fn remove_worktree(bare_path: &Path, worktree_path: &Path) -> Result<(), GitError> {
+    let cmd_str = format!(
+        "git -C {} worktree remove {}",
+        bare_path.display(),
+        worktree_path.display()
+    );
+
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(bare_path)
+        .arg("worktree")
+        .arg("remove")
+        .arg(worktree_path)
+        .output()
+        .map_err(|e| GitError::Command {
+            cmd: cmd_str.clone(),
+            stderr: e.to_string(),
+        })?;
+
+    if !output.status.success() {
+        return Err(GitError::Command {
+            cmd: cmd_str,
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
+    }
+
+    // Prune stale worktree entries
+    let prune_cmd = format!("git -C {} worktree prune", bare_path.display());
+    let prune_output = Command::new("git")
+        .arg("-C")
+        .arg(bare_path)
+        .arg("worktree")
+        .arg("prune")
+        .output()
+        .map_err(|e| GitError::Command {
+            cmd: prune_cmd.clone(),
+            stderr: e.to_string(),
+        })?;
+
+    if !prune_output.status.success() {
+        return Err(GitError::Command {
+            cmd: prune_cmd,
+            stderr: String::from_utf8_lossy(&prune_output.stderr).into_owned(),
+        });
+    }
+
+    Ok(())
+}
+
+/// List all worktrees for a bare repository by parsing `git worktree list --porcelain`.
+pub fn list_worktrees(bare_path: &Path) -> Result<Vec<WorktreeInfo>, GitError> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(bare_path)
+        .args(["worktree", "list", "--porcelain"])
+        .output()
+        .map_err(|e| GitError::Command {
+            cmd: format!("git -C {} worktree list --porcelain", bare_path.display()),
+            stderr: e.to_string(),
+        })?;
+
+    if !output.status.success() {
+        return Err(GitError::Command {
+            cmd: format!("git -C {} worktree list --porcelain", bare_path.display()),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    Ok(parse_worktree_porcelain(&text))
+}
+
+/// Parse the porcelain output of `git worktree list --porcelain` into [`WorktreeInfo`] entries.
+fn parse_worktree_porcelain(text: &str) -> Vec<WorktreeInfo> {
+    let mut worktrees = Vec::new();
+    let mut current_path: Option<PathBuf> = None;
+    let mut current_branch: Option<String> = None;
+    let mut current_bare = false;
+
+    for line in text.lines() {
+        if let Some(p) = line.strip_prefix("worktree ") {
+            // Flush previous entry
+            if let Some(path) = current_path.take() {
+                worktrees.push(WorktreeInfo {
+                    path,
+                    branch: current_branch.take(),
+                    is_bare: current_bare,
+                });
+            }
+            current_path = Some(PathBuf::from(p));
+            current_branch = None;
+            current_bare = false;
+        } else if let Some(b) = line.strip_prefix("branch ") {
+            let short = b.strip_prefix("refs/heads/").unwrap_or(b);
+            current_branch = Some(short.to_string());
+        } else if line == "bare" {
+            current_bare = true;
+        }
+    }
+    // Flush last entry
+    if let Some(path) = current_path.take() {
+        worktrees.push(WorktreeInfo {
+            path,
+            branch: current_branch.take(),
+            is_bare: current_bare,
+        });
+    }
+
+    worktrees
+}
+
+/// List all worktrees across all registered repositories in the catalog.
+///
+/// Returns a `Vec` of `(repo_name, Vec<WorktreeInfo>)` tuples, one per repository.
+pub fn list_all_worktrees(
+    catalog: &Catalog,
+    _config: &MakeworkConfig,
+) -> Vec<(String, Vec<WorktreeInfo>)> {
+    let mut result = Vec::new();
+    for (name, repo) in &catalog.repos {
+        match list_worktrees(&repo.path) {
+            Ok(worktrees) => result.push((name.clone(), worktrees)),
+            Err(_) => result.push((name.clone(), Vec::new())),
+        }
+    }
+    result
+}
+
+/// Errors produced by the [`go`] function.
+#[derive(Debug)]
+pub enum GoError {
+    /// The project name could not be resolved in the catalog.
+    ProjectNotFound(String),
+    /// A git operation failed while creating a worktree.
+    Git(GitError),
+}
+
+impl std::fmt::Display for GoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GoError::ProjectNotFound(name) => write!(f, "project not found: {name}"),
+            GoError::Git(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for GoError {}
+
+impl From<GitError> for GoError {
+    fn from(e: GitError) -> Self {
+        GoError::Git(e)
+    }
+}
+
+/// Navigate to a project worktree, creating it if necessary.
+///
+/// Resolves `project_name` via the catalog, computes the worktree path, creates
+/// the worktree when it does not exist, and returns the absolute path (including
+/// any subproject sub-directory).
+pub fn go(
+    catalog: &Catalog,
+    config: &MakeworkConfig,
+    project_name: &str,
+    ref_: Option<&str>,
+) -> Result<PathBuf, GoError> {
+    let (repo, subproject_path) = catalog
+        .find_project(project_name)
+        .ok_or_else(|| GoError::ProjectNotFound(project_name.to_string()))?;
+
+    let parsed_url = repo.url.as_deref().and_then(parse_remote_url);
+    let branch = ref_.unwrap_or(repo.main_branch.as_str());
+    let wt_path = worktree_path(config, parsed_url.as_ref(), &repo.name, branch);
+
+    if !wt_path.exists() {
+        create_worktree(&repo.path, branch, &wt_path)?;
+    }
+
+    let final_path = match subproject_path {
+        Some(sub) => wt_path.join(sub),
+        None => wt_path,
+    };
+
+    Ok(final_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn worktree_path_with_parsed_url() {
+        let config = MakeworkConfig {
+            worktree_root: PathBuf::from("/data/worktrees"),
+            bare_root: PathBuf::from("/data/repos"),
+        };
+        let parsed = ParsedUrl {
+            host: "github.com".to_string(),
+            segments: vec!["user".to_string(), "repo".to_string()],
+        };
+
+        let result = worktree_path(&config, Some(&parsed), "repo", "main");
+        assert_eq!(
+            result,
+            PathBuf::from("/data/worktrees/github.com/user/repo/main")
+        );
+    }
+
+    #[test]
+    fn worktree_path_with_branch_slash() {
+        let config = MakeworkConfig {
+            worktree_root: PathBuf::from("/data/worktrees"),
+            bare_root: PathBuf::from("/data/repos"),
+        };
+        let parsed = ParsedUrl {
+            host: "github.com".to_string(),
+            segments: vec!["user".to_string(), "repo".to_string()],
+        };
+
+        let result = worktree_path(&config, Some(&parsed), "repo", "feature/auth");
+        assert_eq!(
+            result,
+            PathBuf::from("/data/worktrees/github.com/user/repo/feature/auth")
+        );
+    }
+
+    #[test]
+    fn worktree_path_local_repo() {
+        let config = MakeworkConfig {
+            worktree_root: PathBuf::from("/data/worktrees"),
+            bare_root: PathBuf::from("/data/repos"),
+        };
+
+        let result = worktree_path(&config, None, "my-project", "develop");
+        assert_eq!(
+            result,
+            PathBuf::from("/data/worktrees/local/my-project/develop")
+        );
+    }
+
+    #[test]
+    fn worktree_path_local_with_branch_slash() {
+        let config = MakeworkConfig {
+            worktree_root: PathBuf::from("/data/worktrees"),
+            bare_root: PathBuf::from("/data/repos"),
+        };
+
+        let result = worktree_path(&config, None, "my-project", "feature/auth");
+        assert_eq!(
+            result,
+            PathBuf::from("/data/worktrees/local/my-project/feature/auth")
+        );
+    }
+
+    #[test]
+    fn worktree_path_with_subgroup_segments() {
+        let config = MakeworkConfig {
+            worktree_root: PathBuf::from("/data/worktrees"),
+            bare_root: PathBuf::from("/data/repos"),
+        };
+        let parsed = ParsedUrl {
+            host: "gitlab.com".to_string(),
+            segments: vec![
+                "group".to_string(),
+                "subgroup".to_string(),
+                "repo".to_string(),
+            ],
+        };
+
+        let result = worktree_path(&config, Some(&parsed), "repo", "main");
+        assert_eq!(
+            result,
+            PathBuf::from("/data/worktrees/gitlab.com/group/subgroup/repo/main")
+        );
+    }
+
+    // --- sanitize_branch_for_path tests ---
+
+    #[test]
+    fn sanitize_simple_branch() {
+        assert_eq!(sanitize_branch_for_path("main"), "main");
+    }
+
+    #[test]
+    fn sanitize_branch_with_slash() {
+        assert_eq!(sanitize_branch_for_path("feature/auth"), "feature/auth");
+    }
+
+    #[test]
+    fn sanitize_branch_strips_refs_tags() {
+        assert_eq!(sanitize_branch_for_path("refs/tags/v1.0"), "v1.0");
+    }
+
+    #[test]
+    fn sanitize_branch_replaces_colons() {
+        assert_eq!(sanitize_branch_for_path("fix:bug"), "fix_bug");
+    }
+
+    #[test]
+    fn sanitize_branch_replaces_spaces() {
+        assert_eq!(sanitize_branch_for_path("my branch name"), "my_branch_name");
+    }
+
+    #[test]
+    fn sanitize_branch_replaces_problematic_chars() {
+        assert_eq!(
+            sanitize_branch_for_path("a\\b?c*d<e>f|g\"h"),
+            "a_b_c_d_e_f_g_h"
+        );
+    }
+
+    #[test]
+    fn sanitize_branch_collapses_slashes() {
+        assert_eq!(sanitize_branch_for_path("a//b///c"), "a/b/c");
+    }
+
+    #[test]
+    fn sanitize_branch_trims_slashes() {
+        assert_eq!(
+            sanitize_branch_for_path("/leading/trailing/"),
+            "leading/trailing"
+        );
+    }
+
+    #[test]
+    fn sanitize_refs_tags_nested() {
+        assert_eq!(
+            sanitize_branch_for_path("refs/tags/release/1.0"),
+            "release/1.0"
+        );
+    }
+
+    // --- parse_worktree_porcelain tests ---
+
+    #[test]
+    fn parse_porcelain_bare_and_worktree() {
+        let output = "\
+worktree /home/user/repos/test.git
+HEAD abc123
+branch refs/heads/main
+bare
+
+worktree /home/user/worktrees/test/feature
+HEAD def456
+branch refs/heads/feature/auth
+
+";
+        let worktrees = super::parse_worktree_porcelain(output);
+        assert_eq!(worktrees.len(), 2);
+
+        assert_eq!(
+            worktrees[0].path,
+            PathBuf::from("/home/user/repos/test.git")
+        );
+        assert_eq!(worktrees[0].branch.as_deref(), Some("main"));
+        assert!(worktrees[0].is_bare);
+
+        assert_eq!(
+            worktrees[1].path,
+            PathBuf::from("/home/user/worktrees/test/feature")
+        );
+        assert_eq!(worktrees[1].branch.as_deref(), Some("feature/auth"));
+        assert!(!worktrees[1].is_bare);
+    }
+
+    #[test]
+    fn parse_porcelain_detached_head() {
+        let output = "\
+worktree /home/user/repos/test.git
+HEAD abc123
+bare
+
+worktree /home/user/worktrees/test/detached
+HEAD def456
+detached
+";
+        let worktrees = super::parse_worktree_porcelain(output);
+        assert_eq!(worktrees.len(), 2);
+
+        assert_eq!(worktrees[1].branch, None);
+        assert!(!worktrees[1].is_bare);
+    }
+
+    #[test]
+    fn parse_porcelain_no_trailing_newline() {
+        let output = "worktree /tmp/bare.git\nHEAD abc\nbare";
+        let worktrees = super::parse_worktree_porcelain(output);
+        assert_eq!(worktrees.len(), 1);
+        assert_eq!(worktrees[0].path, PathBuf::from("/tmp/bare.git"));
+        assert!(worktrees[0].is_bare);
+    }
+}

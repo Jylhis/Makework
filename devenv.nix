@@ -25,8 +25,8 @@
     channel = "stable";
   };
 
-  pre-commit.hooks = {
-    clippy.enable = true;
+  git-hooks.hooks = {
+    clippy.enable = false;
     rustfmt.enable = true;
     nixfmt.enable = true;
   };

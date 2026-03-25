@@ -1,6 +1,15 @@
-[package]
-name = "makework"
+[workspace]
+members = ["crates/mw-core", "crates/mw-cli"]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+etcetera = "0.8"
+gix = { version = "0.72", default-features = false, features = ["revision"] }

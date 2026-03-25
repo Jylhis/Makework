@@ -29,6 +29,8 @@ devenv.lock
 .claude/
 .mcp.json
 
-# Added by cargo
+# Specify
+.specify/memory/
 
+# Added by cargo
 /target
