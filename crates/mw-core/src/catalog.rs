@@ -5,8 +5,16 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::config::MakeworkConfig;
-use crate::project::Subproject;
+use crate::project::{NixConfig, Subproject};
 use crate::repository::Repository;
+
+/// Result of resolving a project name through the catalog.
+#[derive(Debug)]
+pub struct ResolvedProject<'a> {
+    pub repo: &'a Repository,
+    pub subproject_path: Option<&'a str>,
+    pub nix_config: Option<&'a NixConfig>,
+}
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Catalog {
@@ -149,6 +157,111 @@ impl Catalog {
             }
         }
         None
+    }
+
+    /// Like [`find_project`], but returns an error when the name is ambiguous
+    /// (matches in multiple repos). Also returns the subproject's [`NixConfig`]
+    /// when the match is a subproject.
+    pub fn find_project_unambiguous(
+        &self,
+        name: &str,
+    ) -> Result<ResolvedProject<'_>, CatalogError> {
+        // 1. Exact repo name — always unambiguous
+        if let Some(repo) = self.repos.get(name) {
+            return Ok(ResolvedProject {
+                repo,
+                subproject_path: None,
+                nix_config: None,
+            });
+        }
+
+        // 2. Project names within repos — collect all matches
+        let project_matches: Vec<&Repository> = self
+            .repos
+            .values()
+            .filter(|repo| repo.projects.contains_key(name))
+            .collect();
+        if project_matches.len() == 1 {
+            return Ok(ResolvedProject {
+                repo: project_matches[0],
+                subproject_path: None,
+                nix_config: None,
+            });
+        }
+        if project_matches.len() > 1 {
+            return Err(CatalogError::AmbiguousProject {
+                name: name.to_string(),
+                repos: project_matches.iter().map(|r| r.name.clone()).collect(),
+            });
+        }
+
+        // 3. Subproject names — collect all matches
+        let mut sub_matches: Vec<(&Repository, &str, Option<&NixConfig>)> = Vec::new();
+        for repo in self.repos.values() {
+            for project in repo.projects.values() {
+                if let Some(sub) = project.subprojects.get(name) {
+                    sub_matches.push((repo, sub.subproject_path.as_str(), sub.nix.as_ref()));
+                }
+            }
+        }
+        if sub_matches.len() == 1 {
+            let (repo, path, nix) = sub_matches[0];
+            return Ok(ResolvedProject {
+                repo,
+                subproject_path: Some(path),
+                nix_config: nix,
+            });
+        }
+        if sub_matches.len() > 1 {
+            return Err(CatalogError::AmbiguousProject {
+                name: name.to_string(),
+                repos: sub_matches.iter().map(|(r, _, _)| r.name.clone()).collect(),
+            });
+        }
+
+        Err(CatalogError::RepoNotFound(name.to_string()))
+    }
+
+    /// Scan directories for git repositories not yet in the catalog.
+    ///
+    /// Walks each `scan_root` one level deep (non-recursive), looking for
+    /// directories that contain `.git` or `HEAD`. Calls [`catalog_add`] for
+    /// each discovered repo. Returns the list of newly registered repo names.
+    pub fn sync(
+        &mut self,
+        config: &MakeworkConfig,
+        scan_roots: &[PathBuf],
+    ) -> Result<Vec<String>, CatalogError> {
+        let mut added = Vec::new();
+        for root in scan_roots {
+            if !root.exists() {
+                continue;
+            }
+            let entries = std::fs::read_dir(root).map_err(|e| CatalogError::Io(root.clone(), e))?;
+            for entry in entries {
+                let entry = entry.map_err(|e| CatalogError::Io(root.clone(), e))?;
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let is_git = path.join(".git").exists() || path.join("HEAD").exists();
+                if !is_git {
+                    continue;
+                }
+                match self.catalog_add(&path, config) {
+                    Ok(name) => {
+                        // catalog_add is idempotent; check if it was actually new
+                        if !added.contains(&name) {
+                            added.push(name);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: skipping {}: {e}", path.display());
+                    }
+                }
+            }
+        }
+        Ok(added)
     }
 
     pub fn catalog_add(
@@ -296,6 +409,7 @@ pub enum CatalogError {
     Serialize(toml::ser::Error),
     DuplicateSubproject { name: String, repo: String },
     RepoNotFound(String),
+    AmbiguousProject { name: String, repos: Vec<String> },
     NotGitRepo(PathBuf),
     Git(crate::repository::GitError),
     Config(String),
@@ -311,6 +425,13 @@ impl std::fmt::Display for CatalogError {
                 write!(f, "duplicate subproject name '{name}' in repo '{repo}'")
             }
             Self::RepoNotFound(name) => write!(f, "repository not found: {name}"),
+            Self::AmbiguousProject { name, repos } => {
+                write!(
+                    f,
+                    "ambiguous project name '{name}': found in repos {}. Use the repo name directly.",
+                    repos.join(", ")
+                )
+            }
             Self::NotGitRepo(path) => write!(f, "not a git repository: {}", path.display()),
             Self::Git(e) => write!(f, "git error: {e}"),
             Self::Config(msg) => write!(f, "config error: {msg}"),
@@ -454,5 +575,92 @@ mod tests {
         let (r, sub) = catalog.find_project("api").unwrap();
         assert_eq!(r.name, "myrepo");
         assert_eq!(sub, Some("services/api"));
+    }
+
+    #[test]
+    fn find_project_unambiguous_returns_error_on_duplicate_project_name() {
+        use crate::project::Project;
+        use crate::repository::Repository;
+
+        let mut catalog = Catalog::default();
+
+        let proj1 = Project {
+            name: "shared".to_string(),
+            ..Default::default()
+        };
+        let proj2 = Project {
+            name: "shared".to_string(),
+            ..Default::default()
+        };
+
+        let repo1 = Repository {
+            name: "r1".to_string(),
+            path: PathBuf::from("/tmp/r1"),
+            url: None,
+            main_branch: "main".to_string(),
+            remotes: BTreeMap::new(),
+            projects: BTreeMap::from([("shared".to_string(), proj1)]),
+        };
+        let repo2 = Repository {
+            name: "r2".to_string(),
+            path: PathBuf::from("/tmp/r2"),
+            url: None,
+            main_branch: "main".to_string(),
+            remotes: BTreeMap::new(),
+            projects: BTreeMap::from([("shared".to_string(), proj2)]),
+        };
+        catalog.repos.insert("r1".to_string(), repo1);
+        catalog.repos.insert("r2".to_string(), repo2);
+
+        let result = catalog.find_project_unambiguous("shared");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("ambiguous"));
+    }
+
+    #[test]
+    fn find_project_unambiguous_succeeds_when_unique() {
+        use crate::project::{Project, Subproject};
+        use crate::repository::Repository;
+
+        let mut catalog = Catalog::default();
+        let mut project = Project {
+            name: "myproject".to_string(),
+            ..Default::default()
+        };
+        project.subprojects.insert(
+            "api".to_string(),
+            Subproject {
+                name: "api".to_string(),
+                subproject_path: "services/api".to_string(),
+                ..Default::default()
+            },
+        );
+        let repo = Repository {
+            name: "myrepo".to_string(),
+            path: PathBuf::from("/tmp/myrepo"),
+            url: None,
+            main_branch: "main".to_string(),
+            remotes: BTreeMap::new(),
+            projects: BTreeMap::from([("myproject".to_string(), project)]),
+        };
+        catalog.repos.insert("myrepo".to_string(), repo);
+
+        // By repo name
+        let resolved = catalog.find_project_unambiguous("myrepo").unwrap();
+        assert_eq!(resolved.repo.name, "myrepo");
+        assert!(resolved.subproject_path.is_none());
+
+        // By project name
+        let resolved = catalog.find_project_unambiguous("myproject").unwrap();
+        assert_eq!(resolved.repo.name, "myrepo");
+
+        // By subproject name
+        let resolved = catalog.find_project_unambiguous("api").unwrap();
+        assert_eq!(resolved.repo.name, "myrepo");
+        assert_eq!(resolved.subproject_path, Some("services/api"));
+
+        // Not found
+        let result = catalog.find_project_unambiguous("nonexistent");
+        assert!(result.is_err());
     }
 }

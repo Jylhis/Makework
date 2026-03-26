@@ -46,6 +46,7 @@ fn catalog_add_registers_local_repo() {
     let config = MakeworkConfig {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
+        scan_roots: Vec::new(),
     };
 
     // Set XDG config dir to temp to avoid polluting real config
@@ -81,6 +82,7 @@ fn catalog_add_creates_default_worktree() {
     let config = MakeworkConfig {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
+        scan_roots: Vec::new(),
     };
 
     let mut catalog = Catalog::default();
@@ -112,6 +114,7 @@ fn catalog_add_rejects_non_git_dir() {
     let config = MakeworkConfig {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
+        scan_roots: Vec::new(),
     };
 
     let mut catalog = Catalog::default();

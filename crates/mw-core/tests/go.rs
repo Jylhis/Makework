@@ -47,6 +47,7 @@ fn go_default_branch_returns_existing_path() {
     let config = MakeworkConfig {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
+        scan_roots: Vec::new(),
     };
 
     let mut catalog = Catalog::default();
@@ -55,13 +56,13 @@ fn go_default_branch_returns_existing_path() {
         .expect("catalog_add should succeed");
 
     // go with default branch (None ref)
-    let path = go(&catalog, &config, &name, None).expect("go should succeed");
+    let result = go(&catalog, &config, &name, None).expect("go should succeed");
     assert!(
-        path.exists(),
+        result.path.exists(),
         "returned path should exist: {}",
-        path.display()
+        result.path.display()
     );
-    assert!(path.is_dir(), "returned path should be a directory");
+    assert!(result.path.is_dir(), "returned path should be a directory");
 }
 
 #[test]
@@ -74,6 +75,7 @@ fn go_new_branch_creates_worktree() {
     let config = MakeworkConfig {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
+        scan_roots: Vec::new(),
     };
 
     let mut catalog = Catalog::default();
@@ -92,20 +94,20 @@ fn go_new_branch_creates_worktree() {
         .expect("git branch failed");
 
     // go with explicit new branch
-    let path = go(&catalog, &config, &name, Some("feature/test"))
+    let result = go(&catalog, &config, &name, Some("feature/test"))
         .expect("go with new branch should succeed");
     assert!(
-        path.exists(),
+        result.path.exists(),
         "worktree path should exist: {}",
-        path.display()
+        result.path.display()
     );
-    assert!(path.is_dir(), "worktree path should be a directory");
+    assert!(result.path.is_dir(), "worktree path should be a directory");
 
     // Verify it's a different path than the default branch worktree
-    let default_path =
+    let default_result =
         go(&catalog, &config, &name, None).expect("go with default branch should succeed");
     assert_ne!(
-        path, default_path,
+        result.path, default_result.path,
         "new branch path should differ from default"
     );
 }

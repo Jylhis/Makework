@@ -1,8 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::catalog::Catalog;
+use crate::catalog::{Catalog, CatalogError};
 use crate::config::MakeworkConfig;
+use crate::nix::{DetectedNix, detect_nix};
 use crate::repository::{GitError, ParsedUrl, parse_remote_url};
 
 /// Information about a single git worktree, parsed from `git worktree list --porcelain`.
@@ -237,6 +238,19 @@ pub fn list_all_worktrees(
     result
 }
 
+/// Result of the [`go`] function, containing the worktree path and optional
+/// nix environment activation information.
+#[derive(Debug)]
+pub struct GoResult {
+    /// Absolute path to the worktree (or subproject directory within it).
+    pub path: PathBuf,
+    /// Detected nix environment activation, if any.
+    pub nix_activation: Option<DetectedNix>,
+    /// Directory where nix activation should run (may differ from `path` when
+    /// `nix.path` is set on a subproject). `None` means use `path`.
+    pub nix_activation_dir: Option<PathBuf>,
+}
+
 /// Errors produced by the [`go`] function.
 #[derive(Debug)]
 pub enum GoError {
@@ -244,6 +258,8 @@ pub enum GoError {
     ProjectNotFound(String),
     /// A git operation failed while creating a worktree.
     Git(GitError),
+    /// A catalog-level error (e.g. ambiguous project name).
+    Catalog(CatalogError),
 }
 
 impl std::fmt::Display for GoError {
@@ -251,6 +267,7 @@ impl std::fmt::Display for GoError {
         match self {
             GoError::ProjectNotFound(name) => write!(f, "project not found: {name}"),
             GoError::Git(e) => write!(f, "{e}"),
+            GoError::Catalog(e) => write!(f, "{e}"),
         }
     }
 }
@@ -260,6 +277,12 @@ impl std::error::Error for GoError {}
 impl From<GitError> for GoError {
     fn from(e: GitError) -> Self {
         GoError::Git(e)
+    }
+}
+
+impl From<CatalogError> for GoError {
+    fn from(e: CatalogError) -> Self {
+        GoError::Catalog(e)
     }
 }
 
@@ -273,25 +296,46 @@ pub fn go(
     config: &MakeworkConfig,
     project_name: &str,
     ref_: Option<&str>,
-) -> Result<PathBuf, GoError> {
-    let (repo, subproject_path) = catalog
-        .find_project(project_name)
-        .ok_or_else(|| GoError::ProjectNotFound(project_name.to_string()))?;
+) -> Result<GoResult, GoError> {
+    let resolved = catalog.find_project_unambiguous(project_name)?;
 
-    let parsed_url = repo.url.as_deref().and_then(parse_remote_url);
-    let branch = ref_.unwrap_or(repo.main_branch.as_str());
-    let wt_path = worktree_path(config, parsed_url.as_ref(), &repo.name, branch);
+    let parsed_url = resolved.repo.url.as_deref().and_then(parse_remote_url);
+    let branch = ref_.unwrap_or(resolved.repo.main_branch.as_str());
+    let wt_path = worktree_path(config, parsed_url.as_ref(), &resolved.repo.name, branch);
 
     if !wt_path.exists() {
-        create_worktree(&repo.path, branch, &wt_path)?;
+        create_worktree(&resolved.repo.path, branch, &wt_path)?;
     }
 
-    let final_path = match subproject_path {
+    let final_path = match resolved.subproject_path {
         Some(sub) => wt_path.join(sub),
-        None => wt_path,
+        None => wt_path.clone(),
     };
 
-    Ok(final_path)
+    // Determine nix detection directory and explicit config
+    let (nix_detection_dir, explicit_nix) = if let Some(nix_cfg) = resolved.nix_config {
+        // Subproject with nix config — check nix.path
+        if let Some(ref nix_path) = nix_cfg.path {
+            (wt_path.join(nix_path), Some(nix_cfg))
+        } else {
+            (wt_path.clone(), Some(nix_cfg))
+        }
+    } else {
+        (wt_path.clone(), None)
+    };
+
+    let nix_activation = detect_nix(&nix_detection_dir, explicit_nix);
+    let nix_activation_dir = if nix_activation.is_some() && nix_detection_dir != final_path {
+        Some(nix_detection_dir)
+    } else {
+        None
+    };
+
+    Ok(GoResult {
+        path: final_path,
+        nix_activation,
+        nix_activation_dir,
+    })
 }
 
 #[cfg(test)]
@@ -303,6 +347,7 @@ mod tests {
         let config = MakeworkConfig {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
+            scan_roots: Vec::new(),
         };
         let parsed = ParsedUrl {
             host: "github.com".to_string(),
@@ -321,6 +366,7 @@ mod tests {
         let config = MakeworkConfig {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
+            scan_roots: Vec::new(),
         };
         let parsed = ParsedUrl {
             host: "github.com".to_string(),
@@ -339,6 +385,7 @@ mod tests {
         let config = MakeworkConfig {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
+            scan_roots: Vec::new(),
         };
 
         let result = worktree_path(&config, None, "my-project", "develop");
@@ -353,6 +400,7 @@ mod tests {
         let config = MakeworkConfig {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
+            scan_roots: Vec::new(),
         };
 
         let result = worktree_path(&config, None, "my-project", "feature/auth");
@@ -367,6 +415,7 @@ mod tests {
         let config = MakeworkConfig {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
+            scan_roots: Vec::new(),
         };
         let parsed = ParsedUrl {
             host: "gitlab.com".to_string(),

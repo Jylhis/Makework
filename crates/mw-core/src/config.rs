@@ -14,6 +14,8 @@ struct ConfigFile {
 pub struct MakeworkConfig {
     pub worktree_root: PathBuf,
     pub bare_root: PathBuf,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scan_roots: Vec<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -34,7 +36,7 @@ impl std::fmt::Display for ConfigError {
             ConfigError::HomeDirNotFound => write!(f, "could not determine home directory"),
             ConfigError::UnknownKey(key) => write!(
                 f,
-                "unknown config key: {key} (supported: worktree_root, bare_root)"
+                "unknown config key: {key} (supported: worktree_root, bare_root, scan_roots)"
             ),
         }
     }
@@ -94,6 +96,7 @@ impl MakeworkConfig {
         Ok(Self {
             worktree_root: data_dir.join("worktrees"),
             bare_root: data_dir.join("repos"),
+            scan_roots: Vec::new(),
         })
     }
 
@@ -130,6 +133,11 @@ impl MakeworkConfig {
 
         config.worktree_root = expand_tilde(&config.worktree_root)?;
         config.bare_root = expand_tilde(&config.bare_root)?;
+        config.scan_roots = config
+            .scan_roots
+            .iter()
+            .map(|p| expand_tilde(p))
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(config)
     }
@@ -167,7 +175,7 @@ impl MakeworkConfig {
             "default"
         };
 
-        Ok(vec![
+        let mut entries = vec![
             (
                 "worktree_root".to_string(),
                 self.worktree_root.display().to_string(),
@@ -178,7 +186,20 @@ impl MakeworkConfig {
                 self.bare_root.display().to_string(),
                 source.to_string(),
             ),
-        ])
+        ];
+        if !self.scan_roots.is_empty() {
+            let roots: Vec<String> = self
+                .scan_roots
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect();
+            entries.push((
+                "scan_roots".to_string(),
+                roots.join(", "),
+                source.to_string(),
+            ));
+        }
+        Ok(entries)
     }
 
     /// Set a single config key and persist the config file.
@@ -193,6 +214,12 @@ impl MakeworkConfig {
             }
             "bare_root" => {
                 config.bare_root = expand_tilde(Path::new(value))?;
+            }
+            "scan_roots" => {
+                config.scan_roots = value
+                    .split(',')
+                    .map(|s| expand_tilde(Path::new(s.trim())))
+                    .collect::<Result<Vec<_>, _>>()?;
             }
             _ => {
                 return Err(ConfigError::UnknownKey(key.to_string()));
@@ -267,6 +294,7 @@ mod tests {
         let config = MakeworkConfig {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
+            scan_roots: Vec::new(),
         };
         let file = ConfigFile {
             config: config.clone(),
@@ -304,6 +332,7 @@ bare_root = "~/.local/share/makework/repos"
         let config = MakeworkConfig {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
+            scan_roots: Vec::new(),
         };
         let entries = config.config_show().unwrap();
         assert_eq!(entries.len(), 2);
