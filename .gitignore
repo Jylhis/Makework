@@ -25,6 +25,10 @@ target
 devenv.lock
 .pre-commit-config.yaml
 
+# Nix build output
+result
+result-*
+
 # Claude Code
 .claude/
 .mcp.json
