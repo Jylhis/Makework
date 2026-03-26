@@ -1,0 +1,14 @@
+[package]
+name = "mw-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "mw"
+path = "src/main.rs"
+
+[dependencies]
+mw-core = { path = "../mw-core" }
+clap = { workspace = true }
+clap_complete = { workspace = true }
+toml = { workspace = true }

@@ -25,10 +25,9 @@
     channel = "stable";
   };
 
-  git-hooks.hooks = {
-    clippy.enable = false;
-    rustfmt.enable = true;
-    nixfmt.enable = true;
+  treefmt ={
+    enable = true;
   };
+
 
 }
