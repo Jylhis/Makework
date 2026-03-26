@@ -198,6 +198,48 @@ pub fn get_default_branch(bare_path: &Path) -> Result<String, GitError> {
     Ok(short.to_string())
 }
 
+/// List all local branches in a bare repository.
+///
+/// Opens the bare repo with `gix` and iterates `refs/heads/*`, returning
+/// short branch names sorted alphabetically.
+pub fn list_branches(bare_path: &Path) -> Result<Vec<String>, GitError> {
+    let repo = gix::open(bare_path).map_err(|e| GitError::Gitoxide(e.to_string()))?;
+    let refs = repo
+        .references()
+        .map_err(|e| GitError::Gitoxide(e.to_string()))?;
+    let branches = refs
+        .local_branches()
+        .map_err(|e| GitError::Gitoxide(e.to_string()))?;
+
+    let mut result = Vec::new();
+    for reference in branches.flatten() {
+        let full_name = reference.name().as_bstr().to_string();
+        let short = full_name
+            .strip_prefix("refs/heads/")
+            .unwrap_or(&full_name)
+            .to_string();
+        result.push(short);
+    }
+    result.sort();
+    Ok(result)
+}
+
+/// Check whether the default branch of a bare repository has changed.
+///
+/// Compares the current HEAD target against `known_branch`. Returns
+/// `Some(new_branch)` if it differs, `None` if unchanged.
+pub fn check_default_branch_changed(
+    bare_path: &Path,
+    known_branch: &str,
+) -> Result<Option<String>, GitError> {
+    let current = get_default_branch(bare_path)?;
+    if current != known_branch {
+        Ok(Some(current))
+    } else {
+        Ok(None)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
