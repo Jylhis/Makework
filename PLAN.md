@@ -293,3 +293,4 @@ Phases 4 and 5 can be developed in parallel after Phases 2+3.
 - Cross-project ripgrep (future)
 - Worktree template files (future)
 - Query projects (for example to answer: what did I work on yesterday)
+- init catalog

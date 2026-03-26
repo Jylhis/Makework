@@ -28,6 +28,4 @@
   treefmt ={
     enable = true;
   };
-
-
 }
