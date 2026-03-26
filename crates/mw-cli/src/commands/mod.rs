@@ -197,8 +197,14 @@ pub fn dispatch(cli: Cli) {
                     }
                 };
                 match mw_core::worktree::go(&catalog, &config, &project, ref_.as_deref()) {
-                    Ok(path) => {
-                        println!("{}", path.display());
+                    Ok(result) => {
+                        println!("{}", result.path.display());
+                        if let Some(ref nix) = result.nix_activation {
+                            println!("{}", nix.activation_command);
+                            if let Some(ref dir) = result.nix_activation_dir {
+                                println!("{}", dir.display());
+                            }
+                        }
                     }
                     Err(e) => {
                         eprintln!("Error: {e}");
@@ -209,21 +215,25 @@ pub fn dispatch(cli: Cli) {
             Command::New { project, ref_ } => {
                 let config = load_config();
                 let catalog = load_catalog(&config);
-                let (repo, _) = catalog.find_project(&project).unwrap_or_else(|| {
-                    eprintln!("Project not found: {project}");
-                    std::process::exit(1);
-                });
-                let parsed_url = repo
+                let resolved = match catalog.find_project_unambiguous(&project) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    }
+                };
+                let parsed_url = resolved
+                    .repo
                     .url
                     .as_deref()
                     .and_then(mw_core::repository::parse_remote_url);
                 let wt_path = mw_core::worktree::worktree_path(
                     &config,
                     parsed_url.as_ref(),
-                    &repo.name,
+                    &resolved.repo.name,
                     &ref_,
                 );
-                match mw_core::worktree::create_worktree(&repo.path, &ref_, &wt_path) {
+                match mw_core::worktree::create_worktree(&resolved.repo.path, &ref_, &wt_path) {
                     Ok(()) => println!("{}", wt_path.display()),
                     Err(e) => {
                         eprintln!("Error: {e}");
@@ -241,21 +251,25 @@ pub fn dispatch(cli: Cli) {
                     eprintln!("Target must be <project>/<ref> or a worktree path");
                     std::process::exit(1);
                 };
-                let (repo, _) = catalog.find_project(&project_name).unwrap_or_else(|| {
-                    eprintln!("Project not found: {project_name}");
-                    std::process::exit(1);
-                });
-                let parsed_url = repo
+                let resolved = match catalog.find_project_unambiguous(&project_name) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    }
+                };
+                let parsed_url = resolved
+                    .repo
                     .url
                     .as_deref()
                     .and_then(mw_core::repository::parse_remote_url);
                 let wt_path = mw_core::worktree::worktree_path(
                     &config,
                     parsed_url.as_ref(),
-                    &repo.name,
+                    &resolved.repo.name,
                     &ref_name,
                 );
-                match mw_core::worktree::remove_worktree(&repo.path, &wt_path) {
+                match mw_core::worktree::remove_worktree(&resolved.repo.path, &wt_path) {
                     Ok(()) => println!("Removed worktree: {}", wt_path.display()),
                     Err(e) => {
                         eprintln!("Error: {e}");
@@ -274,8 +288,12 @@ pub fn dispatch(cli: Cli) {
                 for (repo_name, worktrees) in &all {
                     println!("{repo_name}:");
                     for wt in worktrees {
+                        if wt.is_bare {
+                            continue;
+                        }
                         let branch = wt.branch.as_deref().unwrap_or("(detached)");
-                        println!("  {:<30} {}", branch, wt.path.display());
+                        let orphan = if !wt.path.exists() { " (orphaned)" } else { "" };
+                        println!("  {:<30} {}{}", branch, wt.path.display(), orphan);
                     }
                 }
             }
@@ -297,9 +315,22 @@ pub fn dispatch(cli: Cli) {
                 for repo in &repos {
                     print!("Fetching {}... ", repo.name);
                     match mw_core::repository::fetch(&repo.path) {
-                        Ok(()) => println!("done"),
+                        Ok(()) => {
+                            println!("done");
+                            if let Ok(Some(new_branch)) =
+                                mw_core::repository::check_default_branch_changed(
+                                    &repo.path,
+                                    &repo.main_branch,
+                                )
+                            {
+                                eprintln!(
+                                    "  Note: default branch appears to have changed from '{}' to '{new_branch}'",
+                                    repo.main_branch
+                                );
+                            }
+                        }
                         Err(e) => {
-                            println!("error: {e}");
+                            println!("error: {}", format_git_error(&e));
                             had_error = true;
                         }
                     }
@@ -309,7 +340,47 @@ pub fn dispatch(cli: Cli) {
                 }
             }
             Command::Sync => {
-                eprintln!("sync: not yet implemented");
+                let config = load_config();
+                let mut catalog = load_catalog(&config);
+                let scan_roots = if config.scan_roots.is_empty() {
+                    // Fall back to ~/Developer if it exists
+                    match mw_core::config::expand_tilde(std::path::Path::new("~/Developer")) {
+                        Ok(dev) if dev.exists() => vec![dev],
+                        _ => vec![],
+                    }
+                } else {
+                    config.scan_roots.clone()
+                };
+                if scan_roots.is_empty() {
+                    eprintln!(
+                        "No scan roots configured. Set with: mw config set scan_roots ~/Developer"
+                    );
+                    std::process::exit(1);
+                }
+                println!(
+                    "Scanning: {}",
+                    scan_roots
+                        .iter()
+                        .map(|p| p.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                match catalog.sync(&config, &scan_roots) {
+                    Ok(added) => {
+                        if added.is_empty() {
+                            println!("No new repositories found.");
+                        } else {
+                            println!("Registered {} new repo(s):", added.len());
+                            for name in &added {
+                                println!("  {name}");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {e}");
+                        std::process::exit(1);
+                    }
+                }
             }
             Command::Catalog { action } => match action {
                 CatalogAction::Add { path } => {
@@ -360,6 +431,23 @@ pub fn dispatch(cli: Cli) {
                 CatalogAction::Remove { project } => {
                     let config = load_config();
                     let mut catalog = load_catalog(&config);
+                    // Warn about active worktrees before removing
+                    if let Some(repo) = catalog.repos.get(&project)
+                        && let Ok(worktrees) = mw_core::worktree::list_worktrees(&repo.path)
+                    {
+                        let active: Vec<_> = worktrees.iter().filter(|wt| !wt.is_bare).collect();
+                        if !active.is_empty() {
+                            eprintln!(
+                                "Warning: {project} has {} active worktree(s):",
+                                active.len()
+                            );
+                            for wt in &active {
+                                let branch = wt.branch.as_deref().unwrap_or("(detached)");
+                                eprintln!("  {} {}", branch, wt.path.display());
+                            }
+                            eprintln!("These worktrees will become orphaned.");
+                        }
+                    }
                     if catalog.repos.remove(&project).is_some() {
                         if let Err(e) = catalog.save(&config) {
                             eprintln!("Error saving catalog: {e}");
@@ -435,20 +523,20 @@ pub fn dispatch(cli: Cli) {
                         eprintln!("Please specify a project name");
                         std::process::exit(1);
                     });
-                    match catalog.find_project(&name) {
-                        Some((repo, _)) => {
-                            println!("name: {}", repo.name);
-                            println!("path: {}", repo.path.display());
-                            if let Some(ref url) = repo.url {
+                    match catalog.find_project_unambiguous(&name) {
+                        Ok(resolved) => {
+                            println!("name: {}", resolved.repo.name);
+                            println!("path: {}", resolved.repo.path.display());
+                            if let Some(ref url) = resolved.repo.url {
                                 println!("url: {url}");
                             }
-                            println!("main_branch: {}", repo.main_branch);
-                            for (rname, remote) in &repo.remotes {
+                            println!("main_branch: {}", resolved.repo.main_branch);
+                            for (rname, remote) in &resolved.repo.remotes {
                                 println!("remote.{rname}: {}", remote.url);
                             }
                         }
-                        None => {
-                            eprintln!("Project not found: {name}");
+                        Err(e) => {
+                            eprintln!("Error: {e}");
                             std::process::exit(1);
                         }
                     }
@@ -575,7 +663,16 @@ mw() {
   local output
   output=$(command mw "$@") || return $?
   case "$1" in
-    go) [ -n "$output" ] && cd "$output" ;;
+    go)
+      local path nix_cmd nix_dir
+      path=$(printf '%s' "$output" | sed -n '1p')
+      nix_cmd=$(printf '%s' "$output" | sed -n '2p')
+      nix_dir=$(printf '%s' "$output" | sed -n '3p')
+      [ -n "$path" ] && cd "$path" || return $?
+      if [ -n "$nix_cmd" ]; then
+        cd "${nix_dir:-$path}" && eval "$nix_cmd"
+      fi
+      ;;
     *) [ -n "$output" ] && echo "$output" ;;
   esac
 }
@@ -587,7 +684,14 @@ function mw
   set -l output (command mw $argv); or return $status
   switch $argv[1]
     case go
-      test -n "$output"; and cd $output
+      set -l path (echo "$output" | sed -n '1p')
+      set -l nix_cmd (echo "$output" | sed -n '2p')
+      set -l nix_dir (echo "$output" | sed -n '3p')
+      test -n "$path"; and cd $path; or return $status
+      if test -n "$nix_cmd"
+        cd (test -n "$nix_dir" && echo "$nix_dir" || echo "$path")
+        eval $nix_cmd
+      end
     case '*'
       test -n "$output"; and echo $output
   end
@@ -599,5 +703,18 @@ end
                 print!("{wrapper}");
             }
         },
+    }
+}
+
+/// Format a git error for display, adding hints for common issues like lock files.
+fn format_git_error(e: &mw_core::repository::GitError) -> String {
+    let msg = e.to_string();
+    if msg.contains(".lock'") || msg.contains(".lock:") {
+        format!(
+            "{msg}\nHint: a git lock file exists. Another git process may be running, \
+             or a previous process crashed. Remove the lock file to proceed."
+        )
+    } else {
+        msg
     }
 }
