@@ -106,6 +106,53 @@ fn catalog_add_creates_default_worktree() {
 }
 
 #[test]
+fn catalog_add_falls_back_when_remote_unreachable() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let repo_dir = tmp.path().join("remote-fail-repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    setup_temp_git_repo(&repo_dir);
+
+    // Set a bogus remote URL that will fail to clone
+    Command::new("git")
+        .args(["-C"])
+        .arg(&repo_dir)
+        .args([
+            "remote",
+            "add",
+            "origin",
+            "https://nonexistent.invalid/user/repo.git",
+        ])
+        .output()
+        .expect("git remote add failed");
+
+    let config = MakeworkConfig {
+        worktree_root: tmp.path().join("worktrees"),
+        bare_root: tmp.path().join("repos"),
+        scan_roots: Vec::new(),
+    };
+
+    let mut catalog = Catalog::default();
+    let name = catalog
+        .catalog_add(&repo_dir, &config)
+        .expect("catalog_add should succeed with local fallback");
+
+    assert_eq!(name, "repo");
+    assert!(catalog.repos.contains_key("repo"));
+
+    let repo = &catalog.repos["repo"];
+    // The remote URL should still be stored
+    assert_eq!(
+        repo.url.as_deref(),
+        Some("https://nonexistent.invalid/user/repo.git")
+    );
+    // The bare clone should exist (created from local source)
+    assert!(
+        repo.path.exists(),
+        "bare clone should exist from local fallback"
+    );
+}
+
+#[test]
 fn catalog_add_rejects_non_git_dir() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let non_repo = tmp.path().join("not-a-repo");
@@ -120,4 +167,75 @@ fn catalog_add_rejects_non_git_dir() {
     let mut catalog = Catalog::default();
     let result = catalog.catalog_add(&non_repo, &config);
     assert!(result.is_err());
+}
+
+#[test]
+fn catalog_add_url_rejects_invalid_url() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config = MakeworkConfig {
+        worktree_root: tmp.path().join("worktrees"),
+        bare_root: tmp.path().join("repos"),
+        scan_roots: Vec::new(),
+    };
+
+    let mut catalog = Catalog::default();
+    let result = catalog.catalog_add_url("not-a-valid-url", &config);
+    assert!(result.is_err());
+    assert!(
+        result.unwrap_err().to_string().contains("invalid git URL"),
+        "should report invalid URL"
+    );
+}
+
+#[test]
+fn catalog_add_url_is_idempotent() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let source_dir = tmp.path().join("source");
+    std::fs::create_dir_all(&source_dir).unwrap();
+    setup_temp_git_repo(&source_dir);
+
+    let config = MakeworkConfig {
+        worktree_root: tmp.path().join("worktrees"),
+        bare_root: tmp.path().join("repos"),
+        scan_roots: Vec::new(),
+    };
+
+    let mut catalog = Catalog::default();
+
+    // First add via local path
+    let name1 = catalog
+        .catalog_add(&source_dir, &config)
+        .expect("first add");
+
+    // Second add via local path — idempotent
+    let name2 = catalog
+        .catalog_add(&source_dir, &config)
+        .expect("second add");
+    assert_eq!(name1, name2);
+    assert_eq!(catalog.repos.len(), 1);
+}
+
+#[test]
+#[ignore] // Requires network access
+fn catalog_add_url_from_github() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config = MakeworkConfig {
+        worktree_root: tmp.path().join("worktrees"),
+        bare_root: tmp.path().join("repos"),
+        scan_roots: Vec::new(),
+    };
+
+    let mut catalog = Catalog::default();
+    let name = catalog
+        .catalog_add_url("https://github.com/octocat/Hello-World.git", &config)
+        .expect("catalog_add_url from GitHub");
+
+    assert_eq!(name, "Hello-World");
+    assert!(catalog.repos.contains_key("Hello-World"));
+    let repo = &catalog.repos["Hello-World"];
+    assert!(repo.path.exists());
+    assert_eq!(
+        repo.url.as_deref(),
+        Some("https://github.com/octocat/Hello-World.git")
+    );
 }

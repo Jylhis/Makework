@@ -46,7 +46,11 @@ pub enum Command {
         target: String,
     },
     /// List all active worktrees
-    Ls,
+    Ls {
+        /// Prune orphaned worktrees whose directories no longer exist
+        #[arg(long)]
+        prune: bool,
+    },
     /// Fetch updates for one or all repos
     Fetch {
         /// Specific project to fetch (all if omitted)
@@ -83,10 +87,13 @@ pub enum Command {
 
 #[derive(Subcommand)]
 pub enum CatalogAction {
+    /// Initialize makework directories and config files
+    Init,
     /// Register a git repository
     Add {
-        /// Path to an existing git repository
-        path: String,
+        /// Local path or git URL (https://, git@, ssh://)
+        #[arg(name = "source")]
+        source: String,
     },
     /// List catalog entries
     List,
@@ -277,23 +284,39 @@ pub fn dispatch(cli: Cli) {
                     }
                 }
             }
-            Command::Ls => {
+            Command::Ls { prune } => {
                 let config = load_config();
                 let catalog = load_catalog(&config);
-                let all = mw_core::worktree::list_all_worktrees(&catalog, &config);
-                if all.is_empty() {
-                    println!("No active worktrees.");
-                    return;
-                }
-                for (repo_name, worktrees) in &all {
-                    println!("{repo_name}:");
-                    for wt in worktrees {
-                        if wt.is_bare {
-                            continue;
+                if prune {
+                    let results = mw_core::worktree::prune_all_worktrees(&catalog, &config);
+                    if results.is_empty() {
+                        println!("No orphaned worktrees found.");
+                    } else {
+                        for (repo_name, result) in &results {
+                            match result {
+                                Ok(count) => {
+                                    println!("{repo_name}: pruned {count} orphaned worktree(s)")
+                                }
+                                Err(e) => eprintln!("{repo_name}: error pruning: {e}"),
+                            }
                         }
-                        let branch = wt.branch.as_deref().unwrap_or("(detached)");
-                        let orphan = if !wt.path.exists() { " (orphaned)" } else { "" };
-                        println!("  {:<30} {}{}", branch, wt.path.display(), orphan);
+                    }
+                } else {
+                    let all = mw_core::worktree::list_all_worktrees(&catalog, &config);
+                    if all.is_empty() {
+                        println!("No active worktrees.");
+                        return;
+                    }
+                    for (repo_name, worktrees) in &all {
+                        println!("{repo_name}:");
+                        for wt in worktrees {
+                            if wt.is_bare {
+                                continue;
+                            }
+                            let branch = wt.branch.as_deref().unwrap_or("(detached)");
+                            let orphan = if !wt.path.exists() { " (orphaned)" } else { "" };
+                            println!("  {:<30} {}{}", branch, wt.path.display(), orphan);
+                        }
                     }
                 }
             }
@@ -383,7 +406,29 @@ pub fn dispatch(cli: Cli) {
                 }
             }
             Command::Catalog { action } => match action {
-                CatalogAction::Add { path } => {
+                CatalogAction::Init => {
+                    let config = load_config();
+                    match mw_core::catalog::Catalog::init(&config) {
+                        Ok(result) => {
+                            if result.created.is_empty() {
+                                println!("Already initialized. Nothing to do.");
+                            } else {
+                                println!("Initialized makework:");
+                                for path in &result.created {
+                                    println!("  created {}", path.display());
+                                }
+                            }
+                            for path in &result.already_existed {
+                                println!("  exists  {}", path.display());
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                CatalogAction::Add { source } => {
                     let config = match mw_core::config::MakeworkConfig::load() {
                         Ok(c) => c,
                         Err(e) => {
@@ -398,8 +443,15 @@ pub fn dispatch(cli: Cli) {
                             std::process::exit(1);
                         }
                     };
-                    let source = std::path::Path::new(&path);
-                    match catalog.catalog_add(source, &config) {
+
+                    let result = if mw_core::repository::parse_remote_url(&source).is_some() {
+                        catalog.catalog_add_url(&source, &config)
+                    } else {
+                        let path = std::path::Path::new(&source);
+                        catalog.catalog_add(path, &config)
+                    };
+
+                    match result {
                         Ok(name) => {
                             println!("Registered repository: {name}");
                         }

@@ -238,6 +238,58 @@ pub fn list_all_worktrees(
     result
 }
 
+/// Run `git worktree prune` on a bare repository to clean up
+/// stale worktree entries whose directories no longer exist.
+///
+/// Returns the number of worktrees that were orphaned (and thus pruned).
+pub fn prune_worktrees(bare_path: &Path) -> Result<usize, GitError> {
+    let worktrees = list_worktrees(bare_path)?;
+    let orphaned_count = worktrees
+        .iter()
+        .filter(|wt| !wt.is_bare && !wt.path.exists())
+        .count();
+
+    if orphaned_count > 0 {
+        let cmd_str = format!("git -C {} worktree prune", bare_path.display());
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(bare_path)
+            .args(["worktree", "prune"])
+            .output()
+            .map_err(|e| GitError::Command {
+                cmd: cmd_str.clone(),
+                stderr: e.to_string(),
+            })?;
+
+        if !output.status.success() {
+            return Err(GitError::Command {
+                cmd: cmd_str,
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            });
+        }
+    }
+
+    Ok(orphaned_count)
+}
+
+/// Prune orphaned worktrees across all registered repositories.
+///
+/// Returns a list of `(repo_name, Result)` for repos that had orphans or errors.
+pub fn prune_all_worktrees(
+    catalog: &Catalog,
+    _config: &MakeworkConfig,
+) -> Vec<(String, Result<usize, GitError>)> {
+    let mut results = Vec::new();
+    for (name, repo) in &catalog.repos {
+        let result = prune_worktrees(&repo.path);
+        match &result {
+            Ok(0) => {}
+            _ => results.push((name.clone(), result)),
+        }
+    }
+    results
+}
+
 /// Result of the [`go`] function, containing the worktree path and optional
 /// nix environment activation information.
 #[derive(Debug)]

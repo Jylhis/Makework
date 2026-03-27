@@ -8,6 +8,15 @@ use crate::config::MakeworkConfig;
 use crate::project::{NixConfig, Subproject};
 use crate::repository::Repository;
 
+/// Summary of what [`Catalog::init`] created or found.
+#[derive(Debug, Default)]
+pub struct InitResult {
+    /// Paths that were newly created by this invocation.
+    pub created: Vec<PathBuf>,
+    /// Paths that already existed and were left untouched.
+    pub already_existed: Vec<PathBuf>,
+}
+
 /// Result of resolving a project name through the catalog.
 #[derive(Debug)]
 pub struct ResolvedProject<'a> {
@@ -69,6 +78,46 @@ impl Catalog {
         let content = toml::to_string_pretty(self).map_err(CatalogError::Serialize)?;
         fs::write(&path, content).map_err(|e| CatalogError::Io(path.clone(), e))?;
         Ok(())
+    }
+
+    /// Initialize makework directories and config files.
+    ///
+    /// Creates the config directory, default `config.toml`, empty
+    /// `catalog.toml`, `bare_root`, and `worktree_root`. Idempotent:
+    /// existing files are never overwritten.
+    pub fn init(config: &MakeworkConfig) -> Result<InitResult, CatalogError> {
+        let mut result = InitResult::default();
+
+        // Config directory
+        let config_dir =
+            MakeworkConfig::config_dir().map_err(|e| CatalogError::Config(e.to_string()))?;
+        create_dir_tracking(&config_dir, &mut result)?;
+
+        // config.toml
+        let config_path = config_dir.join("config.toml");
+        if config_path.exists() {
+            result.already_existed.push(config_path);
+        } else {
+            config
+                .save()
+                .map_err(|e| CatalogError::Config(e.to_string()))?;
+            result.created.push(config_path);
+        }
+
+        // catalog.toml
+        let catalog_path = Self::path(config);
+        if catalog_path.exists() {
+            result.already_existed.push(catalog_path);
+        } else {
+            Catalog::default().save(config)?;
+            result.created.push(catalog_path);
+        }
+
+        // Data directories
+        create_dir_tracking(&config.bare_root, &mut result)?;
+        create_dir_tracking(&config.worktree_root, &mut result)?;
+
+        Ok(result)
     }
 
     fn validate_unique_subprojects(&self) -> Result<(), CatalogError> {
@@ -327,22 +376,21 @@ impl Catalog {
         // Clone bare (or register local-only)
         if let Some(ref url) = remote_url {
             if !bare_dest.exists() {
-                clone_bare(url, &bare_dest).map_err(CatalogError::Git)?;
+                match clone_bare(url, &bare_dest) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        eprintln!(
+                            "Warning: remote unreachable for {}: {e}. Falling back to local clone.",
+                            source_path.display()
+                        );
+                        // Clean up any partial clone attempt
+                        let _ = std::fs::remove_dir_all(&bare_dest);
+                        clone_bare_from_local(&source_path, &bare_dest)?;
+                    }
+                }
             }
-        } else {
-            // Local-only: just use the source path as the bare path
-            // We skip cloning for local repos without remotes
-            if !bare_dest.exists() {
-                std::fs::create_dir_all(&bare_dest)
-                    .map_err(|e| CatalogError::Io(bare_dest.clone(), e))?;
-                // Init a bare repo
-                std::process::Command::new("git")
-                    .args(["clone", "--bare"])
-                    .arg(&source_path)
-                    .arg(&bare_dest)
-                    .output()
-                    .map_err(|e| CatalogError::Io(bare_dest.clone(), e))?;
-            }
+        } else if !bare_dest.exists() {
+            clone_bare_from_local(&source_path, &bare_dest)?;
         }
 
         // Fetch to ensure up to date
@@ -385,6 +433,110 @@ impl Catalog {
 
         Ok(repo_name)
     }
+
+    /// Register a remote git repository by URL.
+    ///
+    /// Unlike [`catalog_add`](Self::catalog_add) which starts from a local
+    /// path, this clones directly from the provided URL without requiring a
+    /// local checkout.
+    pub fn catalog_add_url(
+        &mut self,
+        url: &str,
+        config: &MakeworkConfig,
+    ) -> Result<String, CatalogError> {
+        use crate::repository::{Remote, clone_bare, fetch, get_default_branch, parse_remote_url};
+        use crate::worktree::{create_worktree, worktree_path};
+
+        let parsed = parse_remote_url(url)
+            .ok_or_else(|| CatalogError::Config(format!("invalid git URL: {url}")))?;
+
+        let repo_name =
+            parsed.segments.last().cloned().ok_or_else(|| {
+                CatalogError::Config(format!("cannot derive repo name from: {url}"))
+            })?;
+
+        // Idempotent
+        if self.repos.contains_key(&repo_name) {
+            return Ok(repo_name);
+        }
+
+        // Compute bare clone destination
+        let mut bare_dest = config.bare_root.clone();
+        bare_dest.push(&parsed.host);
+        for seg in &parsed.segments {
+            bare_dest.push(seg);
+        }
+        bare_dest.set_extension("git");
+
+        // Clone bare from URL
+        if !bare_dest.exists() {
+            clone_bare(url, &bare_dest).map_err(CatalogError::Git)?;
+        }
+
+        let _ = fetch(&bare_dest);
+
+        let main_branch = get_default_branch(&bare_dest).unwrap_or_else(|_| "main".to_string());
+
+        // Create default worktree
+        let wt_path = worktree_path(config, Some(&parsed), &repo_name, &main_branch);
+        if !wt_path.exists() {
+            let _ = create_worktree(&bare_dest, &main_branch, &wt_path);
+        }
+
+        let _ = crate::maintenance::maintenance_register(&bare_dest);
+
+        let mut remotes = BTreeMap::new();
+        remotes.insert(
+            "origin".to_string(),
+            Remote {
+                url: url.to_string(),
+            },
+        );
+
+        let repo = Repository {
+            name: repo_name.clone(),
+            path: bare_dest,
+            url: Some(url.to_string()),
+            main_branch,
+            remotes,
+            projects: BTreeMap::new(),
+        };
+
+        self.repos.insert(repo_name.clone(), repo);
+        self.save(config)?;
+
+        Ok(repo_name)
+    }
+}
+
+fn create_dir_tracking(path: &Path, result: &mut InitResult) -> Result<(), CatalogError> {
+    if path.exists() {
+        result.already_existed.push(path.to_path_buf());
+    } else {
+        fs::create_dir_all(path).map_err(|e| CatalogError::Io(path.to_path_buf(), e))?;
+        result.created.push(path.to_path_buf());
+    }
+    Ok(())
+}
+
+fn clone_bare_from_local(source_path: &Path, bare_dest: &Path) -> Result<(), CatalogError> {
+    let output = std::process::Command::new("git")
+        .args(["clone", "--bare"])
+        .arg(source_path)
+        .arg(bare_dest)
+        .output()
+        .map_err(|e| CatalogError::Io(bare_dest.to_path_buf(), e))?;
+    if !output.status.success() {
+        return Err(CatalogError::Git(crate::repository::GitError::Command {
+            cmd: format!(
+                "git clone --bare {} {}",
+                source_path.display(),
+                bare_dest.display()
+            ),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        }));
+    }
+    Ok(())
 }
 
 fn get_origin_url(git_dir: &Path) -> Option<String> {
