@@ -6,68 +6,53 @@ Shared helper `setup_temp_git_repo()` is duplicated per test file (existing conv
 
 ---
 
-## Phase 9 — `mw sync` auto-discovery with heuristics
+## Phase 9 — `mw sync` auto-discovery with heuristics ✅
 
 ### Step 1: Write failing tests (RED)
 
 #### Unit tests — `catalog.rs` inline `#[cfg(test)]`
-- [ ] `sync_options_default_values` — `SyncOptions::default()` has `max_depth: 1` and empty `exclude`
+- [x] `sync_options_default_values` — `SyncOptions::default()` has `max_depth: 1` and empty `exclude`
 
 #### Integration tests — `crates/mw-core/tests/sync.rs` (extend existing file)
 
-- [ ] `sync_respects_max_depth`
-  - Setup: `scan_root/group/nested-repo/` (depth 2) with `git init`
-  - Assert: `sync(config, &[scan_root], SyncOptions { max_depth: 1, .. })` finds 0 repos
-  - Assert: `sync(config, &[scan_root], SyncOptions { max_depth: 2, .. })` finds 1 repo ("nested-repo")
-
-- [ ] `sync_excludes_patterns`
-  - Setup: `scan_root/good-repo/` (git init), `scan_root/node_modules/hidden-repo/` (git init at depth 2)
-  - Assert: `sync(config, &[scan_root], SyncOptions { max_depth: 2, exclude: vec!["node_modules"] })` finds only "good-repo"
-
-- [ ] `sync_skips_submodules`
-  - Setup: `scan_root/parent/` (git init), inside it `scan_root/parent/vendor/child/` where `child/.git` is a **file** (not dir) containing `gitdir: ../../.git/modules/child`
-  - Assert: `sync(config, &[scan_root], SyncOptions::default())` finds "parent" but NOT "child"
-
-- [ ] `sync_skips_bare_repos`
-  - Setup: `scan_root/normal-repo/` (git init), `scan_root/bare.git/` (bare repo via `git clone --bare`)
-  - Assert: sync at depth 1 finds "normal-repo" but not "bare"
-  - Heuristic: `HEAD` exists AND `objects/` exists AND `.git` does NOT exist → bare, skip
-
-- [ ] Update existing `sync_discovers_git_repos` and `sync_is_idempotent` to pass `SyncOptions::default()` as third arg (backward compat)
+- [x] `sync_respects_max_depth`
+- [x] `sync_excludes_patterns`
+- [x] `sync_skips_submodules`
+- [x] `sync_skips_bare_repos`
+- [x] Update existing `sync_discovers_git_repos` and `sync_is_idempotent` to pass `SyncOptions::default()` as third arg (backward compat)
 
 ### Step 2: Make tests compile (scaffold types)
 
 #### Config (`config.rs`)
-- [ ] Add `sync_max_depth: Option<u32>` to `MakeworkConfig` with `#[serde(default, skip_serializing_if = "Option::is_none")]`
-- [ ] Add `sync_exclude: Vec<String>` to `MakeworkConfig` with `#[serde(default, skip_serializing_if = "Vec::is_empty")]`
-- [ ] Add `"sync_max_depth"` and `"sync_exclude"` arms in `config_set()`
+- [x] Add `sync_max_depth: Option<u32>` to `MakeworkConfig`
+- [x] Add `sync_exclude: Vec<String>` to `MakeworkConfig`
+- [x] Add `"sync_max_depth"` and `"sync_exclude"` arms in `config_set()`
 
 #### Core (`catalog.rs`)
-- [ ] Add `SyncOptions` struct with `Default` impl: `{ max_depth: u32 = 1, exclude: Vec<String> = vec![] }`
-- [ ] Change `Catalog::sync()` signature: add `options: &SyncOptions` parameter
-- [ ] Stub body: keep existing single-level walk (tests still fail on depth/exclude/heuristics)
+- [x] Add `SyncOptions` struct with `Default` impl
+- [x] Change `Catalog::sync()` signature: add `options: &SyncOptions` parameter
 
 ### Step 3: Implement until GREEN
 
 #### Core (`catalog.rs`)
-- [ ] Replace `read_dir` loop with recursive `walk_for_repos(dir, current_depth, max_depth, exclude)` helper
-- [ ] In walker: skip entries whose name matches any `exclude` pattern (simple glob: exact match or `fnmatch`-style)
-- [ ] In walker: detect submodule — if `entry.join(".git")` is a **file** (not dir), skip
-- [ ] In walker: detect bare repo — if `entry.join("HEAD").exists() && entry.join("objects").exists() && !entry.join(".git").exists()`, skip
-- [ ] In walker: if `entry.join(".git").is_dir()`, it's a real repo → call `catalog_add`, do NOT recurse deeper
-- [ ] In walker: otherwise if `current_depth < max_depth`, recurse into entry
+- [x] Replace `read_dir` loop with recursive `walk_for_repos(dir, current_depth, max_depth, exclude)` helper
+- [x] In walker: skip entries matching exclude patterns
+- [x] In walker: detect submodule (`.git` is a file, not dir), skip
+- [x] In walker: detect bare repo (HEAD + objects/ exist, no .git), skip
+- [x] In walker: `.git` is_dir → real repo, do NOT recurse deeper
+- [x] In walker: otherwise recurse if within depth limit
 
 #### CLI (`commands/mod.rs`)
-- [ ] Add `--depth <N>` optional flag to `Sync` command struct
-- [ ] Add `--exclude <PATTERN>` repeatable flag (`Vec<String>`) to `Sync` command struct
-- [ ] In `Sync` handler: build `SyncOptions` from `config.sync_max_depth.unwrap_or(1)` + CLI `--depth` override, merge `config.sync_exclude` + CLI `--exclude`
+- [x] Add `--depth <N>` optional flag to `Sync` command struct
+- [x] Add `--exclude <PATTERN>` repeatable flag to `Sync` command struct
+- [x] In `Sync` handler: build `SyncOptions` from config + CLI overrides
 
 ### Step 4: Validate
 
-- [ ] `cargo test -p mw-core` — all new + existing sync tests green
-- [ ] `cargo test` — full suite green
-- [ ] `cargo clippy --all-targets -- -D warnings` — clean
-- [ ] `cargo fmt -- --check` — clean
+- [x] `cargo test -p mw-core` — all new + existing sync tests green
+- [x] `cargo test` — full suite green
+- [x] `cargo clippy --all-targets -- -D warnings` — clean
+- [x] `cargo fmt -- --check` — clean
 - [ ] Manual: `mw sync --depth 2 --exclude node_modules` works on real filesystem
 
 ---
