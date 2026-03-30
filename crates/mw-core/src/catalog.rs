@@ -662,6 +662,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn sync_options_default_values() {
+        let opts = SyncOptions::default();
+        assert_eq!(opts.max_depth, 1);
+        assert!(opts.exclude.is_empty());
+    }
+
+    #[test]
     fn catalog_toml_round_trip() {
         use crate::repository::{Remote, Repository};
 
