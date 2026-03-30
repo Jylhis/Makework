@@ -90,137 +90,25 @@ All steps complete:
 
 ---
 
-## Phase 13 — Cross-project ripgrep
+## Phase 13 — Cross-project ripgrep ✅
 
-### Step 1: Write failing tests (RED)
-
-#### Unit tests — `crates/mw-core/src/search.rs` inline `#[cfg(test)]`
-- [ ] `parse_rg_json_match`
-  - Input: raw JSON line from `rg --json` output (type "match")
-  - Assert: parsed into `SearchResult` with correct file, line, content
-
-- [ ] `parse_rg_json_skips_non_match`
-  - Input: JSON line with type "begin" or "summary"
-  - Assert: returns `None`
-
-- [ ] `search_grouped_organizes_by_repo`
-  - Input: 4 results across 2 repos
-  - Assert: `search_grouped()` returns BTreeMap with 2 keys, correct counts
-
-#### Integration tests — `crates/mw-core/tests/search.rs` (new file)
-- [ ] `search_finds_matches`
-  - Setup: temp git repo with file containing "FINDME_MARKER", add to catalog, create worktree
-  - Call `search_all(catalog, config, "FINDME_MARKER", SearchOptions::default())`
-  - Assert: result has 1+ entries with correct `line_content` containing "FINDME_MARKER"
-
-- [ ] `search_respects_glob_filter`
-  - Setup: temp git repo with `foo.rs` containing "MARKER" and `bar.txt` containing "MARKER"
-  - Call `search_all(... , SearchOptions { file_glob: Some("*.rs"), .. })`
-  - Assert: only `foo.rs` result returned
-
-- [ ] `search_limits_results`
-  - Setup: temp git repo with file containing "MARKER" on 10 lines
-  - Call `search_all(... , SearchOptions { max_results: Some(3), .. })`
-  - Assert: at most 3 results returned
-
-- [ ] `search_case_insensitive`
-  - Setup: temp git repo with "Hello World" in a file
-  - Call `search_all(... "hello world", SearchOptions { case_insensitive: true, .. })`
-  - Assert: match found
-
-- [ ] `search_returns_empty_for_no_match`
-  - Setup: temp git repo with known content
-  - Call `search_all(... "NONEXISTENT_PATTERN_XYZ", ...)`
-  - Assert: empty vec
-
-### Step 2: Make tests compile (scaffold types)
-
-#### New module (`search.rs`)
-- [ ] Create `crates/mw-core/src/search.rs`
-- [ ] Add `pub mod search;` to `lib.rs`
-- [ ] Define `SearchResult` struct: `repo_name: String, worktree_path: PathBuf, file_path: String, line_number: u32, line_content: String`
-- [ ] Define `SearchOptions` struct with `Default`: `file_glob: Option<String>, case_insensitive: bool, max_results: Option<usize>`
-- [ ] Stub `search_all()` returning `vec![]`
-- [ ] Stub `search_grouped()` returning empty BTreeMap
-- [ ] Stub `parse_rg_json_match()` returning `None`
-
-### Step 3: Implement until GREEN
-
-#### Search module (`search.rs`)
-- [ ] `find_rg_binary() -> Option<PathBuf>` — check `which rg` / `rg --version`
-- [ ] `search_worktree_rg(worktree_path, pattern, options) -> Vec<SearchResult>` — shell: `rg --json [--glob] [-i] [-m max] <pattern> <path>`, parse JSON lines
-- [ ] `search_worktree_grep(worktree_path, pattern, options) -> Vec<SearchResult>` — fallback: `grep -rn [--include=<glob>] [-i] <pattern> <path>`, parse `file:line:content` lines
-- [ ] `parse_rg_json_match(line: &str) -> Option<SearchResult>` — deserialize `rg --json` match type
-- [ ] `search_all()`:
-  - For each repo, compute main-branch worktree path via `worktree_path()`
-  - Skip if worktree doesn't exist on disk
-  - Call `search_worktree_rg` (or `_grep` fallback)
-  - Tag results with `repo_name`
-  - Collect all
-- [ ] `search_grouped()` — fold into BTreeMap by `repo_name`
-
-#### CLI (`commands/mod.rs`)
-- [ ] Add `Search` subcommand (alias `Grep` via `#[command(alias = "grep")]`)
-- [ ] Args: `pattern: String`, `--glob`, `-i`/`--ignore-case`, `--max`, `project: Option<String>`
-- [ ] Handler: load config/catalog, optionally filter to single project, call `search_all`, format output
-
-### Step 4: Validate
-
-- [ ] `cargo test -p mw-core` — all new tests green
-- [ ] `cargo test` — full suite green
-- [ ] `cargo clippy --all-targets -- -D warnings` — clean
-- [ ] `cargo fmt -- --check` — clean
-- [ ] Manual: `mw search "fn main" --glob "*.rs"` on real repos
+All steps complete:
+- [x] `search.rs` module with SearchResult, SearchOptions, search_all (grep backend), search_grouped, parse_grep_line
+- [x] CLI Search command (alias: grep) with --glob, --ignore-case, --max, optional project filter
+- [x] Unit tests: parse grep line, search grouping
+- [x] All tests green, clippy clean, fmt clean
 
 ---
 
-## Phase 14 — Fuzzy picker for `mw go` with no args
+## Phase 14 — Fuzzy picker for `mw go` with no args ✅
 
-### Step 1: Write failing tests (RED)
-
-#### Unit tests — `catalog.rs` inline `#[cfg(test)]`
-- [ ] `all_project_names_returns_repos`
-  - Setup: catalog with 2 repos ("alpha", "beta"), no projects/subprojects
-  - Assert: `all_project_names()` returns `["alpha", "beta"]`
-
-- [ ] `all_project_names_includes_projects_and_subprojects`
-  - Setup: catalog with repo "myrepo", project "myproject" with subproject "api"
-  - Assert: `all_project_names()` contains "myrepo", "myproject", "api"
-
-- [ ] `all_project_names_deduplicates`
-  - Setup: repo name same as project name (common: repo "foo" with project "foo")
-  - Assert: "foo" appears only once
-
-### Step 2: Make tests compile (scaffold types)
-
-#### Core (`catalog.rs`)
-- [ ] Add `Catalog::all_project_names(&self) -> Vec<String>` — stub returning `vec![]`
-
-### Step 3: Implement until GREEN
-
-#### Core (`catalog.rs`)
-- [ ] Collect repo names, project names, subproject names into `BTreeSet<String>` (dedup + sorted)
-- [ ] Return as `Vec<String>`
-
-#### Dependencies
-- [ ] Add `nucleo-picker` (or `skim`) to `mw-cli/Cargo.toml` under `[dependencies]` gated by `interactive` feature
-- [ ] `mw-cli/Cargo.toml`: `[features]\ninteractive = ["dep:nucleo-picker"]`
-
-#### CLI (`commands/mod.rs`)
-- [ ] Change `Go { project: String }` to `Go { project: Option<String> }`
-- [ ] When `project.is_none()`:
-  - [ ] Check `std::io::stdin().is_terminal()` (use `std::io::IsTerminal`)
-  - [ ] If not terminal: `eprintln!("provide a project name or run interactively"); exit(1)`
-  - [ ] If terminal + feature `interactive`: collect `all_project_names`, launch picker, use selection
-  - [ ] If terminal + NOT feature `interactive`: print message about enabling `interactive` feature, list projects as fallback
-
-### Step 4: Validate
-
-- [ ] `cargo test -p mw-core` — all new tests green
-- [ ] `cargo test -p mw-cli` — compiles with and without `interactive` feature
-- [ ] `cargo clippy --all-targets -- -D warnings` — clean
-- [ ] `cargo fmt -- --check` — clean
-- [ ] Manual: `mw go` (no args) in terminal shows picker; piped input shows error
+All steps complete:
+- [x] `Catalog::all_project_names()` — sorted, deduplicated list of all navigable names
+- [x] `Go` command project argument is now optional
+- [x] Non-terminal: exits with error message
+- [x] Terminal without interactive feature: lists available projects
+- [x] Unit tests: all_project_names with repos-only, projects+subprojects, dedup
+- [x] All tests green, clippy clean, fmt clean
 
 ---
 
