@@ -536,10 +536,10 @@ fn walk_for_repos(
         }
 
         // Skip entries matching exclude patterns
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if options.exclude.iter().any(|pat| pat == name) {
-                continue;
-            }
+        if let Some(name) = path.file_name().and_then(|n| n.to_str())
+            && options.exclude.iter().any(|pat| pat == name)
+        {
+            continue;
         }
 
         let dot_git = path.join(".git");
@@ -550,10 +550,7 @@ fn walk_for_repos(
         }
 
         // Detect bare repo: HEAD + objects/ exist but no .git → skip
-        if !dot_git.exists()
-            && path.join("HEAD").exists()
-            && path.join("objects").exists()
-        {
+        if !dot_git.exists() && path.join("HEAD").exists() && path.join("objects").exists() {
             continue;
         }
 

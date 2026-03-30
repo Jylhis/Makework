@@ -65,7 +65,11 @@ fn sync_discovers_git_repos() {
     let mut catalog = Catalog::default();
 
     let added = catalog
-        .sync(&config, std::slice::from_ref(&scan_root), &SyncOptions::default())
+        .sync(
+            &config,
+            std::slice::from_ref(&scan_root),
+            &SyncOptions::default(),
+        )
         .unwrap();
     assert_eq!(added.len(), 2, "expected 2 repos, got: {added:?}");
     assert!(added.contains(&"repo-a".to_string()));
@@ -92,12 +96,18 @@ fn sync_is_idempotent() {
     let mut catalog = Catalog::default();
 
     let first = catalog
-        .sync(&config, std::slice::from_ref(&scan_root), &SyncOptions::default())
+        .sync(
+            &config,
+            std::slice::from_ref(&scan_root),
+            &SyncOptions::default(),
+        )
         .unwrap();
     assert_eq!(first.len(), 1);
 
     // Second run: should not add any new repos
-    let second = catalog.sync(&config, &[scan_root], &SyncOptions::default()).unwrap();
+    let second = catalog
+        .sync(&config, &[scan_root], &SyncOptions::default())
+        .unwrap();
     assert_eq!(
         second.len(),
         1,
@@ -133,7 +143,7 @@ fn sync_respects_max_depth() {
     let added = catalog
         .sync(
             &config,
-            &[scan_root.clone()],
+            std::slice::from_ref(&scan_root),
             &SyncOptions {
                 max_depth: 1,
                 ..Default::default()
@@ -146,7 +156,7 @@ fn sync_respects_max_depth() {
     let added = catalog
         .sync(
             &config,
-            &[scan_root],
+            std::slice::from_ref(&scan_root),
             &SyncOptions {
                 max_depth: 2,
                 ..Default::default()
@@ -208,11 +218,7 @@ fn sync_skips_submodules() {
     // Simulate a submodule: create child dir with .git as a FILE (not dir)
     let child = scan_root.join("parent").join("vendor").join("child");
     std::fs::create_dir_all(&child).unwrap();
-    std::fs::write(
-        child.join(".git"),
-        "gitdir: ../../../.git/modules/child\n",
-    )
-    .unwrap();
+    std::fs::write(child.join(".git"), "gitdir: ../../../.git/modules/child\n").unwrap();
 
     let config = MakeworkConfig {
         worktree_root: tmp.path().join("worktrees"),
