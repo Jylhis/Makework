@@ -85,6 +85,21 @@ pub enum Command {
         #[command(subcommand)]
         action: ConfigAction,
     },
+    /// Query recent activity across projects
+    Query {
+        /// Show commits since this date (e.g., "yesterday", "7 days ago", "2026-03-01")
+        #[arg(long, default_value = "7 days ago")]
+        since: String,
+        /// Show commits until this date (optional)
+        #[arg(long)]
+        until: Option<String>,
+        /// Filter by author name
+        #[arg(long)]
+        author: Option<String>,
+        /// Output format: short or full
+        #[arg(long, default_value = "short")]
+        format: String,
+    },
     /// Generate shell completions and wrapper
     Completions {
         /// Shell type (bash, zsh, fish)
@@ -423,6 +438,46 @@ pub fn dispatch(cli: Cli) {
                     Err(e) => {
                         eprintln!("Error: {e}");
                         std::process::exit(1);
+                    }
+                }
+            }
+            Command::Query {
+                since,
+                until,
+                author,
+                format,
+            } => {
+                let config = load_config();
+                let catalog = load_catalog(&config);
+                let entries = mw_core::query::query_activity(
+                    &catalog,
+                    &config,
+                    &since,
+                    until.as_deref(),
+                    author.as_deref(),
+                );
+                if entries.is_empty() {
+                    println!("No activity found.");
+                    return;
+                }
+                let summary = mw_core::query::query_activity_summary(&entries);
+                for (repo_name, repo_entries) in &summary {
+                    println!("{repo_name}:");
+                    for e in repo_entries {
+                        match format.as_str() {
+                            "full" => {
+                                println!("  {} {} {}", e.commit_hash, e.author, e.date);
+                                println!("    {}", e.message);
+                            }
+                            _ => {
+                                println!(
+                                    "  {} {} {}",
+                                    &e.commit_hash[..7.min(e.commit_hash.len())],
+                                    e.date,
+                                    e.message
+                                );
+                            }
+                        }
                     }
                 }
             }

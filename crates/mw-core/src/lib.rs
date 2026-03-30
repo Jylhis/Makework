@@ -3,6 +3,7 @@ pub mod config;
 pub mod maintenance;
 pub mod nix;
 pub mod project;
+pub mod query;
 pub mod repository;
 pub mod status;
 pub mod template;
