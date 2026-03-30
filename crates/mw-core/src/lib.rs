@@ -5,4 +5,5 @@ pub mod nix;
 pub mod project;
 pub mod repository;
 pub mod status;
+pub mod template;
 pub mod worktree;

@@ -50,6 +50,7 @@ fn go_default_branch_returns_existing_path() {
         scan_roots: Vec::new(),
         sync_max_depth: None,
         sync_exclude: Vec::new(),
+        template_dir: None,
     };
 
     let mut catalog = Catalog::default();
@@ -80,6 +81,7 @@ fn go_new_branch_creates_worktree() {
         scan_roots: Vec::new(),
         sync_max_depth: None,
         sync_exclude: Vec::new(),
+        template_dir: None,
     };
 
     let mut catalog = Catalog::default();

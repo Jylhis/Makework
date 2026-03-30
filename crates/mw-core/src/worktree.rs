@@ -438,6 +438,11 @@ pub fn go(
         enable_sparse_checkout(&wt_path, sparse)?;
     }
 
+    // Apply template files if configured
+    if let Some(ref tpl_dir) = config.template_dir {
+        let _ = crate::template::apply_template(tpl_dir, &wt_path);
+    }
+
     let final_path = match resolved.subproject_path {
         Some(sub) => wt_path.join(sub),
         None => wt_path.clone(),
@@ -481,6 +486,7 @@ mod tests {
             scan_roots: Vec::new(),
             sync_max_depth: None,
             sync_exclude: Vec::new(),
+            template_dir: None,
         };
         let parsed = ParsedUrl {
             host: "github.com".to_string(),
@@ -502,6 +508,7 @@ mod tests {
             scan_roots: Vec::new(),
             sync_max_depth: None,
             sync_exclude: Vec::new(),
+            template_dir: None,
         };
         let parsed = ParsedUrl {
             host: "github.com".to_string(),
@@ -523,6 +530,7 @@ mod tests {
             scan_roots: Vec::new(),
             sync_max_depth: None,
             sync_exclude: Vec::new(),
+            template_dir: None,
         };
 
         let result = worktree_path(&config, None, "my-project", "develop");
@@ -540,6 +548,7 @@ mod tests {
             scan_roots: Vec::new(),
             sync_max_depth: None,
             sync_exclude: Vec::new(),
+            template_dir: None,
         };
 
         let result = worktree_path(&config, None, "my-project", "feature/auth");
@@ -557,6 +566,7 @@ mod tests {
             scan_roots: Vec::new(),
             sync_max_depth: None,
             sync_exclude: Vec::new(),
+            template_dir: None,
         };
         let parsed = ParsedUrl {
             host: "gitlab.com".to_string(),

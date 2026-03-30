@@ -16,6 +16,7 @@ fn init_creates_directories() {
         scan_roots: Vec::new(),
         sync_max_depth: None,
         sync_exclude: Vec::new(),
+        template_dir: None,
     };
 
     let result = Catalog::init(&config).expect("init should succeed");
@@ -39,6 +40,7 @@ fn init_is_idempotent() {
         scan_roots: Vec::new(),
         sync_max_depth: None,
         sync_exclude: Vec::new(),
+        template_dir: None,
     };
 
     let result1 = Catalog::init(&config).expect("first init");

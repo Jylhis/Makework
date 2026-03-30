@@ -20,6 +20,8 @@ pub struct MakeworkConfig {
     pub sync_max_depth: Option<u32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sync_exclude: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub template_dir: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -103,6 +105,7 @@ impl MakeworkConfig {
             scan_roots: Vec::new(),
             sync_max_depth: None,
             sync_exclude: Vec::new(),
+            template_dir: None,
         })
     }
 
@@ -144,6 +147,9 @@ impl MakeworkConfig {
             .iter()
             .map(|p| expand_tilde(p))
             .collect::<Result<Vec<_>, _>>()?;
+        if let Some(ref tpl) = config.template_dir {
+            config.template_dir = Some(expand_tilde(tpl)?);
+        }
 
         Ok(config)
     }
@@ -241,6 +247,9 @@ impl MakeworkConfig {
                     .filter(|s| !s.is_empty())
                     .collect();
             }
+            "template_dir" => {
+                config.template_dir = Some(expand_tilde(Path::new(value))?);
+            }
             _ => {
                 return Err(ConfigError::UnknownKey(key.to_string()));
             }
@@ -317,6 +326,7 @@ mod tests {
             scan_roots: Vec::new(),
             sync_max_depth: None,
             sync_exclude: Vec::new(),
+            template_dir: None,
         };
         let file = ConfigFile {
             config: config.clone(),
@@ -357,6 +367,7 @@ bare_root = "~/.local/share/makework/repos"
             scan_roots: Vec::new(),
             sync_max_depth: None,
             sync_exclude: Vec::new(),
+            template_dir: None,
         };
         let entries = config.config_show().unwrap();
         assert_eq!(entries.len(), 2);

@@ -61,6 +61,7 @@ fn sync_discovers_git_repos() {
         scan_roots: vec![scan_root.clone()],
         sync_max_depth: None,
         sync_exclude: Vec::new(),
+        template_dir: None,
     };
     let mut catalog = Catalog::default();
 
@@ -92,6 +93,7 @@ fn sync_is_idempotent() {
         scan_roots: vec![scan_root.clone()],
         sync_max_depth: None,
         sync_exclude: Vec::new(),
+        template_dir: None,
     };
     let mut catalog = Catalog::default();
 
@@ -136,6 +138,7 @@ fn sync_respects_max_depth() {
         scan_roots: vec![scan_root.clone()],
         sync_max_depth: None,
         sync_exclude: Vec::new(),
+        template_dir: None,
     };
 
     // depth 1: should NOT find repo at depth 2
@@ -188,6 +191,7 @@ fn sync_excludes_patterns() {
         scan_roots: vec![scan_root.clone()],
         sync_max_depth: None,
         sync_exclude: Vec::new(),
+        template_dir: None,
     };
 
     let mut catalog = Catalog::default();
@@ -226,6 +230,7 @@ fn sync_skips_submodules() {
         scan_roots: vec![scan_root.clone()],
         sync_max_depth: None,
         sync_exclude: Vec::new(),
+        template_dir: None,
     };
 
     let mut catalog = Catalog::default();
@@ -267,6 +272,7 @@ fn sync_skips_bare_repos() {
         scan_roots: vec![scan_root.clone()],
         sync_max_depth: None,
         sync_exclude: Vec::new(),
+        template_dir: None,
     };
 
     let mut catalog = Catalog::default();

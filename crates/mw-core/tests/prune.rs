@@ -49,6 +49,7 @@ fn prune_no_orphans_returns_zero() {
         scan_roots: Vec::new(),
         sync_max_depth: None,
         sync_exclude: Vec::new(),
+        template_dir: None,
     };
 
     let mut catalog = Catalog::default();
@@ -94,6 +95,7 @@ fn prune_cleans_orphaned_worktree() {
         scan_roots: Vec::new(),
         sync_max_depth: None,
         sync_exclude: Vec::new(),
+        template_dir: None,
     };
 
     let mut catalog = Catalog::default();
