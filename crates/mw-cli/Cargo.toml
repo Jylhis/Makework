@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 mw-core = { path = "../mw-core" }
+mw-mcp = { path = "../mw-mcp" }
 clap = { workspace = true }
 clap_complete = { workspace = true }
 toml = { workspace = true }

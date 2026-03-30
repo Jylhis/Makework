@@ -117,6 +117,8 @@ pub enum Command {
         #[arg(long, default_value = "short")]
         format: String,
     },
+    /// Start MCP (Model Context Protocol) server
+    Mcp,
     /// Generate shell completions and wrapper
     Completions {
         /// Shell type (bash, zsh, fish)
@@ -844,6 +846,9 @@ pub fn dispatch(cli: Cli) {
                     }
                 }
             },
+            Command::Mcp => {
+                mw_mcp::server::run_stdio();
+            }
             Command::Completions { shell } => {
                 use clap::CommandFactory;
                 use clap_complete::generate;
