@@ -38,4 +38,6 @@ pub struct Subproject {
     pub docs: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nix: Option<NixConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sparse_paths: Option<Vec<String>>,
 }

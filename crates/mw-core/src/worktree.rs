@@ -70,6 +70,83 @@ pub fn sanitize_branch_for_path(ref_name: &str) -> String {
         .join("/")
 }
 
+/// Enable sparse-checkout on a worktree with the given paths using cone mode.
+///
+/// Runs `git -C <path> sparse-checkout init --cone` followed by
+/// `git -C <path> sparse-checkout set <paths...>`.
+pub fn enable_sparse_checkout(worktree_path: &Path, paths: &[String]) -> Result<(), GitError> {
+    let init_cmd = format!(
+        "git -C {} sparse-checkout init --cone",
+        worktree_path.display()
+    );
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(worktree_path)
+        .args(["sparse-checkout", "init", "--cone"])
+        .output()
+        .map_err(|e| GitError::Command {
+            cmd: init_cmd.clone(),
+            stderr: e.to_string(),
+        })?;
+    if !output.status.success() {
+        return Err(GitError::Command {
+            cmd: init_cmd,
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
+    }
+
+    let mut args = vec!["sparse-checkout", "set"];
+    let path_refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
+    args.extend(path_refs);
+
+    let set_cmd = format!(
+        "git -C {} sparse-checkout set {}",
+        worktree_path.display(),
+        paths.join(" ")
+    );
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(worktree_path)
+        .args(&args)
+        .output()
+        .map_err(|e| GitError::Command {
+            cmd: set_cmd.clone(),
+            stderr: e.to_string(),
+        })?;
+    if !output.status.success() {
+        return Err(GitError::Command {
+            cmd: set_cmd,
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
+    }
+
+    Ok(())
+}
+
+/// Disable sparse-checkout on a worktree, restoring the full checkout.
+pub fn disable_sparse_checkout(worktree_path: &Path) -> Result<(), GitError> {
+    let cmd_str = format!(
+        "git -C {} sparse-checkout disable",
+        worktree_path.display()
+    );
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(worktree_path)
+        .args(["sparse-checkout", "disable"])
+        .output()
+        .map_err(|e| GitError::Command {
+            cmd: cmd_str.clone(),
+            stderr: e.to_string(),
+        })?;
+    if !output.status.success() {
+        return Err(GitError::Command {
+            cmd: cmd_str,
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        });
+    }
+    Ok(())
+}
+
 pub fn create_worktree(
     bare_path: &Path,
     branch: &str,
@@ -357,6 +434,11 @@ pub fn go(
 
     if !wt_path.exists() {
         create_worktree(&resolved.repo.path, branch, &wt_path)?;
+    }
+
+    // Apply sparse-checkout if configured on the subproject
+    if let Some(sparse) = resolved.sparse_paths {
+        enable_sparse_checkout(&wt_path, sparse)?;
     }
 
     let final_path = match resolved.subproject_path {

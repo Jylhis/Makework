@@ -41,6 +41,7 @@ pub struct ResolvedProject<'a> {
     pub repo: &'a Repository,
     pub subproject_path: Option<&'a str>,
     pub nix_config: Option<&'a NixConfig>,
+    pub sparse_paths: Option<&'a [String]>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -239,6 +240,7 @@ impl Catalog {
                 repo,
                 subproject_path: None,
                 nix_config: None,
+                sparse_paths: None,
             });
         }
 
@@ -253,6 +255,7 @@ impl Catalog {
                 repo: project_matches[0],
                 subproject_path: None,
                 nix_config: None,
+                sparse_paths: None,
             });
         }
         if project_matches.len() > 1 {
@@ -263,26 +266,33 @@ impl Catalog {
         }
 
         // 3. Subproject names — collect all matches
-        let mut sub_matches: Vec<(&Repository, &str, Option<&NixConfig>)> = Vec::new();
+        let mut sub_matches: Vec<(&Repository, &str, Option<&NixConfig>, Option<&[String]>)> =
+            Vec::new();
         for repo in self.repos.values() {
             for project in repo.projects.values() {
                 if let Some(sub) = project.subprojects.get(name) {
-                    sub_matches.push((repo, sub.subproject_path.as_str(), sub.nix.as_ref()));
+                    sub_matches.push((
+                        repo,
+                        sub.subproject_path.as_str(),
+                        sub.nix.as_ref(),
+                        sub.sparse_paths.as_deref(),
+                    ));
                 }
             }
         }
         if sub_matches.len() == 1 {
-            let (repo, path, nix) = sub_matches[0];
+            let (repo, path, nix, sparse) = sub_matches[0];
             return Ok(ResolvedProject {
                 repo,
                 subproject_path: Some(path),
                 nix_config: nix,
+                sparse_paths: sparse,
             });
         }
         if sub_matches.len() > 1 {
             return Err(CatalogError::AmbiguousProject {
                 name: name.to_string(),
-                repos: sub_matches.iter().map(|(r, _, _)| r.name.clone()).collect(),
+                repos: sub_matches.iter().map(|(r, _, _, _)| r.name.clone()).collect(),
             });
         }
 
