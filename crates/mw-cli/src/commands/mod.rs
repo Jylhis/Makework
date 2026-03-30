@@ -26,8 +26,8 @@ pub struct Cli {
 pub enum Command {
     /// Navigate to a project worktree
     Go {
-        /// Repository, project, or subproject name
-        project: String,
+        /// Repository, project, or subproject name (interactive picker if omitted)
+        project: Option<String>,
         /// Branch, tag, or commit (defaults to main branch)
         #[arg(name = "ref")]
         ref_: Option<String>,
@@ -242,6 +242,29 @@ pub fn dispatch(cli: Cli) {
                         std::process::exit(1);
                     }
                 };
+
+                let project = match project {
+                    Some(p) => p,
+                    None => {
+                        use std::io::IsTerminal;
+                        if !std::io::stdin().is_terminal() {
+                            eprintln!("Provide a project name or run interactively in a terminal.");
+                            std::process::exit(1);
+                        }
+                        let names = catalog.all_project_names();
+                        if names.is_empty() {
+                            eprintln!("No projects registered. Use `mw catalog add` first.");
+                            std::process::exit(1);
+                        }
+                        eprintln!("Available projects:");
+                        for name in &names {
+                            eprintln!("  {name}");
+                        }
+                        eprintln!("\nUsage: mw go <project>");
+                        std::process::exit(1);
+                    }
+                };
+
                 match mw_core::worktree::go(&catalog, &config, &project, ref_.as_deref()) {
                     Ok(result) => {
                         println!("{}", result.path.display());

@@ -198,6 +198,22 @@ impl Catalog {
         self.repos.get(name)
     }
 
+    /// Return a sorted, deduplicated list of all navigable names:
+    /// repo names, project names, and subproject names.
+    pub fn all_project_names(&self) -> Vec<String> {
+        let mut names = std::collections::BTreeSet::new();
+        for (repo_name, repo) in &self.repos {
+            names.insert(repo_name.clone());
+            for (proj_name, project) in &repo.projects {
+                names.insert(proj_name.clone());
+                for sub_name in project.subprojects.keys() {
+                    names.insert(sub_name.clone());
+                }
+            }
+        }
+        names.into_iter().collect()
+    }
+
     /// Alias for [`find_project`](Self::find_project).
     ///
     /// Resolution order: repo names → project names → subproject names.
@@ -660,6 +676,100 @@ impl std::error::Error for CatalogError {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_project_names_returns_repos() {
+        use crate::repository::Repository;
+
+        let mut catalog = Catalog::default();
+        catalog.repos.insert(
+            "alpha".to_string(),
+            Repository {
+                name: "alpha".to_string(),
+                path: PathBuf::from("/tmp/alpha"),
+                url: None,
+                main_branch: "main".to_string(),
+                remotes: BTreeMap::new(),
+                projects: BTreeMap::new(),
+            },
+        );
+        catalog.repos.insert(
+            "beta".to_string(),
+            Repository {
+                name: "beta".to_string(),
+                path: PathBuf::from("/tmp/beta"),
+                url: None,
+                main_branch: "main".to_string(),
+                remotes: BTreeMap::new(),
+                projects: BTreeMap::new(),
+            },
+        );
+
+        let names = catalog.all_project_names();
+        assert_eq!(names, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn all_project_names_includes_projects_and_subprojects() {
+        use crate::project::{Project, Subproject};
+        use crate::repository::Repository;
+
+        let mut catalog = Catalog::default();
+        let mut project = Project {
+            name: "myproject".to_string(),
+            ..Default::default()
+        };
+        project.subprojects.insert(
+            "api".to_string(),
+            Subproject {
+                name: "api".to_string(),
+                subproject_path: "services/api".to_string(),
+                ..Default::default()
+            },
+        );
+        let repo = Repository {
+            name: "myrepo".to_string(),
+            path: PathBuf::from("/tmp/myrepo"),
+            url: None,
+            main_branch: "main".to_string(),
+            remotes: BTreeMap::new(),
+            projects: BTreeMap::from([("myproject".to_string(), project)]),
+        };
+        catalog.repos.insert("myrepo".to_string(), repo);
+
+        let names = catalog.all_project_names();
+        assert!(names.contains(&"myrepo".to_string()));
+        assert!(names.contains(&"myproject".to_string()));
+        assert!(names.contains(&"api".to_string()));
+    }
+
+    #[test]
+    fn all_project_names_deduplicates() {
+        use crate::project::Project;
+        use crate::repository::Repository;
+
+        let mut catalog = Catalog::default();
+        let project = Project {
+            name: "foo".to_string(),
+            ..Default::default()
+        };
+        let repo = Repository {
+            name: "foo".to_string(),
+            path: PathBuf::from("/tmp/foo"),
+            url: None,
+            main_branch: "main".to_string(),
+            remotes: BTreeMap::new(),
+            projects: BTreeMap::from([("foo".to_string(), project)]),
+        };
+        catalog.repos.insert("foo".to_string(), repo);
+
+        let names = catalog.all_project_names();
+        assert_eq!(
+            names.iter().filter(|n| n.as_str() == "foo").count(),
+            1,
+            "foo should appear only once"
+        );
+    }
 
     #[test]
     fn sync_options_default_values() {
