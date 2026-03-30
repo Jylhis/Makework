@@ -85,6 +85,23 @@ pub enum Command {
         #[command(subcommand)]
         action: ConfigAction,
     },
+    /// Search across all project worktrees
+    #[command(alias = "grep")]
+    Search {
+        /// Regex pattern to search for
+        pattern: String,
+        /// File glob filter (e.g., "*.rs")
+        #[arg(long)]
+        glob: Option<String>,
+        /// Case-insensitive search
+        #[arg(short, long)]
+        ignore_case: bool,
+        /// Limit results per repo
+        #[arg(long)]
+        max: Option<usize>,
+        /// Limit to a single project
+        project: Option<String>,
+    },
     /// Query recent activity across projects
     Query {
         /// Show commits since this date (e.g., "yesterday", "7 days ago", "2026-03-01")
@@ -438,6 +455,33 @@ pub fn dispatch(cli: Cli) {
                     Err(e) => {
                         eprintln!("Error: {e}");
                         std::process::exit(1);
+                    }
+                }
+            }
+            Command::Search {
+                pattern,
+                glob,
+                ignore_case,
+                max,
+                project: _project,
+            } => {
+                let config = load_config();
+                let catalog = load_catalog(&config);
+                let options = mw_core::search::SearchOptions {
+                    file_glob: glob,
+                    case_insensitive: ignore_case,
+                    max_results: max,
+                };
+                let results = mw_core::search::search_all(&catalog, &config, &pattern, &options);
+                if results.is_empty() {
+                    println!("No matches found.");
+                    return;
+                }
+                let grouped = mw_core::search::search_grouped(&results);
+                for (repo_name, repo_results) in &grouped {
+                    println!("{repo_name}:");
+                    for r in repo_results {
+                        println!("  {}:{}:{}", r.file_path, r.line_number, r.line_content);
                     }
                 }
             }
