@@ -57,70 +57,15 @@ Shared helper `setup_temp_git_repo()` is duplicated per test file (existing conv
 
 ---
 
-## Phase 10 — Sparse-checkout for monorepo worktrees
+## Phase 10 — Sparse-checkout for monorepo worktrees ✅
 
-### Step 1: Write failing tests (RED)
-
-#### Unit tests — `worktree.rs` inline `#[cfg(test)]`
-- [ ] `enable_sparse_checkout_runs_git_commands`
-  - Setup: tempdir with `git init`, add a commit
-  - Call `enable_sparse_checkout(&path, &["src", "docs"])`
-  - Assert: `git -C <path> sparse-checkout list` output contains "src" and "docs"
-
-- [ ] `disable_sparse_checkout_restores_full`
-  - Setup: same as above, enable then disable
-  - Assert: `git -C <path> config core.sparseCheckout` is false or sparse-checkout is off
-
-#### Unit tests — `project.rs` inline `#[cfg(test)]`
-- [ ] `subproject_sparse_paths_roundtrip`
-  - Create `Subproject` with `sparse_paths: Some(vec!["src/api", "libs/shared"])`
-  - Serialize to TOML, deserialize back
-  - Assert: `sparse_paths` survived round-trip
-  - Assert: `Subproject` with `sparse_paths: None` serializes without the field
-
-#### Integration tests — `crates/mw-core/tests/go.rs` (extend)
-- [ ] `go_applies_sparse_checkout_for_subproject`
-  - Setup: temp git repo with files in `services/api/` and `services/web/` and `shared/`
-  - Create catalog entry with subproject `api` having `sparse_paths: Some(vec!["services/api", "shared"])`
-  - Call `go(catalog, config, "api", None)`
-  - Assert: worktree exists
-  - Assert: `git -C <worktree> sparse-checkout list` contains expected paths
-
-- [ ] `go_skips_sparse_checkout_when_unset`
-  - Setup: temp git repo, subproject with `sparse_paths: None`
-  - Call `go(catalog, config, "sub", None)`
-  - Assert: `git -C <worktree> config core.sparseCheckout` is not set or false
-
-### Step 2: Make tests compile (scaffold types)
-
-#### Data model (`project.rs`)
-- [ ] Add `sparse_paths: Option<Vec<String>>` to `Subproject` with `#[serde(default, skip_serializing_if = "Option::is_none")]`
-
-#### Git operations (`worktree.rs`)
-- [ ] Add `enable_sparse_checkout(worktree_path: &Path, paths: &[String]) -> Result<(), GitError>` — stub with `todo!()`
-- [ ] Add `disable_sparse_checkout(worktree_path: &Path) -> Result<(), GitError>` — stub with `todo!()`
-
-#### Catalog resolution (`catalog.rs`)
-- [ ] Add `sparse_paths: Option<&'a [String]>` field to `ResolvedProject<'a>`
-- [ ] Populate it in `find_project_unambiguous()` from subproject's `sparse_paths`
-
-### Step 3: Implement until GREEN
-
-#### Git operations (`worktree.rs`)
-- [ ] `enable_sparse_checkout`: shell `git -C <path> sparse-checkout init --cone` then `git -C <path> sparse-checkout set <paths...>`
-- [ ] `disable_sparse_checkout`: shell `git -C <path> sparse-checkout disable`
-- [ ] In `go()`: after worktree exists, if `resolved.sparse_paths.is_some()`, call `enable_sparse_checkout`
-
-#### CLI (`commands/mod.rs`)
-- [ ] In `ProjectAction::Show` handler: print `sparse_paths` when set
-
-### Step 4: Validate
-
-- [ ] `cargo test -p mw-core` — all new + existing tests green
-- [ ] `cargo test` — full suite green
-- [ ] `cargo clippy --all-targets -- -D warnings` — clean
-- [ ] `cargo fmt -- --check` — clean
-- [ ] Manual: create `.makework.toml` with `[subprojects.x]\nsparse_paths = ["src"]`, run `mw go x`, verify sparse checkout
+All steps complete:
+- [x] `sparse_paths: Option<Vec<String>>` added to `Subproject`
+- [x] `enable_sparse_checkout` / `disable_sparse_checkout` implemented in `worktree.rs`
+- [x] `sparse_paths` field added to `ResolvedProject` and populated from subproject
+- [x] `go()` applies sparse-checkout when configured
+- [x] Unit tests: `enable_sparse_checkout_runs_git_commands`, `disable_sparse_checkout_restores_full`, `subproject_sparse_paths_roundtrip`
+- [x] All tests green, clippy clean, fmt clean
 
 ---
 
