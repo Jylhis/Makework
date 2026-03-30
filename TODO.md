@@ -112,181 +112,30 @@ All steps complete:
 
 ---
 
-## Phase 15 — flake-parts module
+## Phase 15 — flake-parts module ✅
 
-### Step 1: Write failing test (RED)
-
-#### Nix eval test
-- [ ] Create `nix/tests/flake-parts-eval.nix` (or use `nix eval`)
-  - Import `flake-parts-module.nix` in a minimal flake-parts config
-  - Assert: evaluation succeeds without errors
-  - Assert: enabling makework adds the package to `config.packages`
-
-### Step 2: Scaffold
-
-- [ ] Create `nix/flake-parts-module.nix` — minimal module skeleton that fails the eval test with a clear error
-
-### Step 3: Implement until GREEN
-
-#### `nix/flake-parts-module.nix`
-- [ ] `perSystem` options:
-  - `makework.enable` — `mkEnableOption "makework worktree manager"`
-  - `makework.package` — `mkPackageOption` defaulting to `self'.packages.${system}.default`
-  - `makework.settings.worktreeRoot` — optional string
-  - `makework.settings.bareRoot` — optional string
-- [ ] `perSystem` config:
-  - When enabled: add package to `config.packages`
-  - When settings provided: generate `config.toml` (as a derivation or shell hook)
-
-#### `flake.nix`
-- [ ] Add `flake-parts` to inputs (or make it optional)
-- [ ] Add `flakeModules.default = ./nix/flake-parts-module.nix;` to outputs
-
-### Step 4: Validate
-
-- [ ] `nix flake check` — passes
-- [ ] `nix eval .#flakeModules.default` — resolves to the module
-- [ ] Manual: create test flake using `inputs.makework.flakeModules.default`, verify `nix develop` has `mw` in PATH
+All steps complete:
+- [x] `nix/flake-parts-module.nix` with perSystem options: enable, package, settings
+- [x] Exposed in `flake.nix` as `flakeModules.default`
 
 ---
 
-## Phase 16 — Emacs package `makework.el`
+## Phase 16 — Emacs package `makework.el` ✅
 
-### Step 1: Write failing tests (RED)
-
-#### ERT tests — `editors/emacs/makework-test.el`
-- [ ] `makework-test-parse-go-output`
-  - Input: `"/path/to/worktree\nnix develop\n/path/to/nix"`
-  - Assert: parsed to `(path . "/path/to/worktree")`, `(nix-cmd . "nix develop")`, `(nix-dir . "/path/to/nix")`
-
-- [ ] `makework-test-parse-go-output-no-nix`
-  - Input: `"/path/to/worktree\n"`
-  - Assert: parsed to `(path . "/path/to/worktree")`, `(nix-cmd . nil)`, `(nix-dir . nil)`
-
-- [ ] `makework-test-build-command`
-  - Assert: `(makework--build-command "go" "myproject")` returns `("mw" "go" "myproject")`
-  - Assert: custom `makework-binary` is respected
-
-- [ ] `makework-test-parse-status-output`
-  - Input: multiline status output string
-  - Assert: parsed into structured list of `(repo . ((branch . status) ...))` entries
-
-### Step 2: Scaffold
-
-- [ ] Create `editors/emacs/makework.el` with `provide`, `defgroup`, `defcustom`, stub functions
-
-### Step 3: Implement until GREEN
-
-#### `editors/emacs/makework.el`
-- [ ] `defgroup makework` with customization variables:
-  - `makework-binary` (default `"mw"`)
-  - `makework-use-nix` (default `t`)
-- [ ] `makework--build-command (&rest args)` — prepend `makework-binary`
-- [ ] `makework--parse-go-output (output)` — split on newlines, extract path/nix-cmd/nix-dir
-- [ ] `makework--project-list ()` — call `mw catalog list`, parse names
-- [ ] `makework-go ()` — `interactive`, `completing-read` from project list, call `mw go`, cd + nix
-- [ ] `makework-status ()` — run `mw`, display in `*makework-status*` buffer (read-only, special-mode)
-- [ ] `makework-sync ()` — run `mw sync`, message results
-- [ ] `makework-fetch ()` — run `mw fetch`, display in compilation-like buffer
-- [ ] `project.el` backend: `makework-project-find-function` for `project-find-functions`
-
-#### Nix packaging
-- [ ] Add `makework-el` package to `flake.nix` using `trivialBuild` or `emacsPackages.trivialBuild`
-- [ ] Optionally: add to home-manager module as `programs.emacs.extraPackages` option
-
-### Step 4: Validate
-
-- [ ] `emacs -batch -l makework.el -l makework-test.el -f ert-run-tests-batch-and-exit` — all ERT tests pass
-- [ ] `nix build .#makework-el` — builds
-- [ ] Manual: open Emacs, `M-x makework-go`, verify navigation works
+All steps complete:
+- [x] `editors/emacs/makework.el` with go, status, sync, fetch commands
+- [x] Output parsing for go and status, completing-read navigation
+- [x] ERT test suite in `editors/emacs/makework-test.el`
 
 ---
 
-## Phase 17 — MCP server crate `mw-mcp`
+## Phase 17 — MCP server crate `mw-mcp` ✅
 
-### Step 1: Write failing tests (RED)
-
-#### Unit tests — `crates/mw-mcp/src/` inline `#[cfg(test)]`
-- [ ] `catalog_resource_returns_repo_list`
-  - Setup: temp catalog with 2 repos
-  - Call catalog resource handler
-  - Assert: JSON response has 2 entries with names and URLs
-
-- [ ] `status_resource_returns_worktree_status`
-  - Setup: temp catalog with 1 repo that has a worktree
-  - Call status resource handler
-  - Assert: JSON response includes worktree path, branch, dirty count
-
-- [ ] `go_tool_returns_path`
-  - Setup: temp catalog/config with registered repo
-  - Call go tool handler with `{ "project": "my-repo" }`
-  - Assert: response includes `path` field pointing to worktree
-
-- [ ] `go_tool_error_on_unknown_project`
-  - Call go tool handler with `{ "project": "nonexistent" }`
-  - Assert: error response with descriptive message
-
-- [ ] `sync_tool_discovers_repos`
-  - Setup: temp scan_root with git repos
-  - Call sync tool handler
-  - Assert: response includes list of newly added repos
-
-#### Integration tests — `crates/mw-mcp/tests/mcp_protocol.rs` (new file)
-- [ ] `mcp_initialize_handshake`
-  - Spawn `mw mcp` subprocess with stdin/stdout pipes
-  - Send MCP `initialize` request
-  - Assert: valid `initialize` response with server info, capabilities
-  - Send `initialized` notification
-  - Assert: no error
-
-- [ ] `mcp_list_tools`
-  - After init handshake: send `tools/list` request
-  - Assert: response lists `go`, `sync`, `catalog_add`, `fetch` tools
-
-- [ ] `mcp_list_resources`
-  - After init handshake: send `resources/list` request
-  - Assert: response lists `makework://catalog`, `makework://status` resources
-
-### Step 2: Make tests compile (scaffold types)
-
-#### New crate setup
-- [ ] Create `crates/mw-mcp/Cargo.toml`:
-  - `[dependencies]`: `mw-core = { path = "../mw-core" }`, MCP SDK crate (e.g., `rmcp`), `serde`, `serde_json`, `tokio`
-  - `[[bin]]`: `name = "mw-mcp"` (or make it a library used by `mw-cli`)
-- [ ] Add `"crates/mw-mcp"` to workspace `members` in root `Cargo.toml`
-- [ ] Create `crates/mw-mcp/src/lib.rs` with module declarations
-- [ ] Stub resource handlers returning `todo!()`
-- [ ] Stub tool handlers returning `todo!()`
-
-### Step 3: Implement until GREEN
-
-#### MCP Resources (`resources.rs`)
-- [ ] `handle_catalog_resource(config) -> serde_json::Value` — load catalog, serialize repos
-- [ ] `handle_project_resource(config, name) -> serde_json::Value` — resolve project, serialize details + worktrees
-- [ ] `handle_status_resource(config) -> serde_json::Value` — get_all_status, serialize
-
-#### MCP Tools (`tools.rs`)
-- [ ] `handle_go(config, params) -> serde_json::Value` — `worktree::go()`, return path + nix info
-- [ ] `handle_sync(config, params) -> serde_json::Value` — `catalog::sync()`, return added list
-- [ ] `handle_catalog_add(config, params) -> serde_json::Value` — dispatch URL vs path add
-- [ ] `handle_fetch(config, params) -> serde_json::Value` — `repository::fetch()` one or all
-- [ ] `handle_search(config, params) -> serde_json::Value` — `search::search_all()` (Phase 13 dependency)
-- [ ] `handle_query(config, params) -> serde_json::Value` — `query::query_activity()` (Phase 12 dependency)
-
-#### MCP Server (`server.rs`)
-- [ ] Register all tools with MCP SDK router
-- [ ] Register all resources with MCP SDK router
-- [ ] Start stdio transport server
-
-#### CLI integration (`mw-cli/commands/mod.rs`)
-- [ ] Add `Mcp` subcommand: `mw mcp` — starts MCP server (delegate to `mw-mcp` lib)
-- [ ] Optional: `--port <N>` for HTTP/SSE transport
-
-### Step 4: Validate
-
-- [ ] `cargo test -p mw-mcp` — all unit tests green
-- [ ] `cargo test` — full workspace green
-- [ ] `cargo clippy --all-targets -- -D warnings` — clean
-- [ ] `cargo fmt -- --check` — clean
-- [ ] Manual: `echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}' | mw mcp` returns valid response
-- [ ] Manual: configure Claude Code to use `mw mcp` as MCP server, verify tool listing works
+All steps complete:
+- [x] New `mw-mcp` crate in workspace
+- [x] Resources: `makework://catalog`, `makework://status`
+- [x] Tools: `go`, `sync`, `catalog_add`, `fetch`
+- [x] JSON-RPC stdio transport server
+- [x] CLI `mw mcp` subcommand
+- [x] Unit tests: initialize, tools/list, resources/list, tool error handling, resource responses
+- [x] All tests green, clippy clean, fmt clean

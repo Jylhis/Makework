@@ -2,7 +2,7 @@
 
 ## Current State
 
-All MVP phases (0–8) and edge-case hardening are complete. The project is a Cargo workspace with two crates (`mw-core`, `mw-cli`), full CLI, git worktree management, nix detection, status overview, and Nix flake packaging.
+All phases (0–17) are complete. The project is a Cargo workspace with three crates (`mw-core`, `mw-cli`, `mw-mcp`), full CLI, git worktree management, nix detection, status overview, Nix flake packaging, cross-project search, activity query, worktree templates, sparse-checkout support, Emacs integration, flake-parts module, and MCP server.
 
 ## Phase 9 — `mw sync` auto-discovery with heuristics
 
