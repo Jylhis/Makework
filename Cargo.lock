@@ -1265,6 +1265,7 @@ dependencies = [
  "clap",
  "clap_complete",
  "mw-core",
+ "mw-mcp",
  "toml",
 ]
 
@@ -1278,6 +1279,16 @@ dependencies = [
  "serde_json",
  "tempfile",
  "toml",
+]
+
+[[package]]
+name = "mw-mcp"
+version = "0.1.0"
+dependencies = [
+ "mw-core",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
