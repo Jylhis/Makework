@@ -80,87 +80,13 @@ All steps complete:
 
 ---
 
-## Phase 12 — Query projects (activity log)
+## Phase 12 — Query projects (activity log) ✅
 
-### Step 1: Write failing tests (RED)
-
-#### Unit tests — `crates/mw-core/src/query.rs` inline `#[cfg(test)]`
-- [ ] `parse_git_log_line`
-  - Input: `"abc1234\tTest User\t2026-03-29T10:00:00+00:00\tfix: something"`
-  - Assert: parsed into `ActivityEntry` with correct fields
-
-- [ ] `dedup_entries_same_repo`
-  - Input: two `ActivityEntry` with same `commit_hash` and `repo_name` but different `worktree_path`
-  - Call `dedup_entries(&mut entries)`
-  - Assert: result has 1 entry
-
-- [ ] `dedup_keeps_different_repos`
-  - Input: two entries with same `commit_hash` but different `repo_name`
-  - Assert: result still has 2 entries (different repos can share cherry-picked commits)
-
-- [ ] `summary_groups_by_repo`
-  - Input: 3 entries across 2 repos
-  - Call `query_activity_summary(&entries)`
-  - Assert: BTreeMap has 2 keys, correct counts
-
-#### Integration tests — `crates/mw-core/tests/query.rs` (new file)
-- [ ] `query_returns_recent_commits`
-  - Setup: temp git repo, add to catalog, make 2 commits with known messages
-  - Call `query_activity(catalog, config, "7 days ago", None, None)`
-  - Assert: result contains 2+ entries (initial + test commits)
-  - Assert: entries sorted by date descending
-
-- [ ] `query_filters_by_author`
-  - Setup: temp git repo with user.name "Alice", commit as Alice; create second worktree, reconfigure user.name "Bob", commit as Bob
-  - Call `query_activity(catalog, config, "7 days ago", None, Some("Alice"))`
-  - Assert: only Alice's commits returned
-
-- [ ] `query_deduplicates_across_worktrees`
-  - Setup: temp git repo, add to catalog, `go` to create default worktree, `go` with new branch (shares history)
-  - Call `query_activity(catalog, config, "7 days ago", None, None)`
-  - Assert: initial commit appears only once per repo despite being visible from 2 worktrees
-
-- [ ] `query_empty_when_no_commits_in_range`
-  - Setup: temp git repo with old commits
-  - Call `query_activity(catalog, config, "1 second ago", None, None)`
-  - Assert: empty result
-
-### Step 2: Make tests compile (scaffold types)
-
-#### New module (`query.rs`)
-- [ ] Create `crates/mw-core/src/query.rs`
-- [ ] Add `pub mod query;` to `lib.rs`
-- [ ] Define `ActivityEntry` struct: `repo_name: String, branch: String, commit_hash: String, author: String, date: String, message: String, worktree_path: PathBuf`
-- [ ] Stub `query_activity()` returning `vec![]`
-- [ ] Stub `query_activity_summary()` returning empty BTreeMap
-- [ ] Stub `parse_git_log_line()` returning `None`
-- [ ] Stub `dedup_entries()` as no-op
-
-### Step 3: Implement until GREEN
-
-#### Query module (`query.rs`)
-- [ ] `parse_git_log_line(line: &str) -> Option<ActivityEntry>` — split on `\t`, populate fields
-- [ ] `dedup_entries(entries: &mut Vec<ActivityEntry>)` — sort by `(repo_name, commit_hash)`, dedup_by same pair
-- [ ] `query_activity()`:
-  - List worktrees for each repo via `worktree::list_worktrees`
-  - For each non-bare worktree: `git -C <path> log --since=<since> [--until=<until>] [--author=<author>] --format="%H\t%an\t%aI\t%s"` + `--no-merges` (optional)
-  - Parse each line, tag with `repo_name` and `worktree_path`
-  - Collect all, dedup, sort by date desc
-- [ ] `query_activity_summary()` — `fold` into `BTreeMap<String, Vec<ActivityEntry>>`
-
-#### CLI (`commands/mod.rs`)
-- [ ] Add `Query` subcommand with `--since`, `--until`, `--author`, `--format`
-- [ ] `Query` handler: load config/catalog, call `query_activity`, format output grouped by repo
-- [ ] Short format: `<hash_short> <date> <message>`
-- [ ] Full format: `<hash> <author> <date>\n  <message>`
-
-### Step 4: Validate
-
-- [ ] `cargo test -p mw-core` — all new tests green
-- [ ] `cargo test` — full suite green
-- [ ] `cargo clippy --all-targets -- -D warnings` — clean
-- [ ] `cargo fmt -- --check` — clean
-- [ ] Manual: `mw query --since yesterday` on real repos
+All steps complete:
+- [x] `query.rs` module with ActivityEntry, parse_git_log_line, dedup_entries, query_activity, query_activity_summary
+- [x] CLI Query command with --since, --until, --author, --format flags
+- [x] Unit tests: parse valid/invalid, dedup same/different repos, summary grouping
+- [x] All tests green, clippy clean, fmt clean
 
 ---
 
