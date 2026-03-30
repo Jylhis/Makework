@@ -57,7 +57,14 @@ pub enum Command {
         project: Option<String>,
     },
     /// Discover and register repos
-    Sync,
+    Sync {
+        /// Maximum directory depth to scan (overrides config)
+        #[arg(long = "depth")]
+        depth: Option<u32>,
+        /// Directory name patterns to skip (repeatable, merged with config)
+        #[arg(long = "exclude")]
+        exclude: Vec<String>,
+    },
     /// Manage the repository catalog
     Catalog {
         #[command(subcommand)]
@@ -362,7 +369,7 @@ pub fn dispatch(cli: Cli) {
                     std::process::exit(1);
                 }
             }
-            Command::Sync => {
+            Command::Sync { depth, exclude } => {
                 let config = load_config();
                 let mut catalog = load_catalog(&config);
                 let scan_roots = if config.scan_roots.is_empty() {
@@ -380,6 +387,20 @@ pub fn dispatch(cli: Cli) {
                     );
                     std::process::exit(1);
                 }
+
+                // Build SyncOptions from config + CLI overrides
+                let max_depth = depth.unwrap_or_else(|| config.sync_max_depth.unwrap_or(1));
+                let mut merged_exclude = config.sync_exclude.clone();
+                for pat in exclude {
+                    if !merged_exclude.contains(&pat) {
+                        merged_exclude.push(pat);
+                    }
+                }
+                let options = mw_core::catalog::SyncOptions {
+                    max_depth,
+                    exclude: merged_exclude,
+                };
+
                 println!(
                     "Scanning: {}",
                     scan_roots
@@ -388,7 +409,7 @@ pub fn dispatch(cli: Cli) {
                         .collect::<Vec<_>>()
                         .join(", ")
                 );
-                match catalog.sync(&config, &scan_roots) {
+                match catalog.sync(&config, &scan_roots, &options) {
                     Ok(added) => {
                         if added.is_empty() {
                             println!("No new repositories found.");

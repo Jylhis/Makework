@@ -47,6 +47,8 @@ fn prune_no_orphans_returns_zero() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
         scan_roots: Vec::new(),
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
 
     let mut catalog = Catalog::default();
@@ -90,6 +92,8 @@ fn prune_cleans_orphaned_worktree() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
         scan_roots: Vec::new(),
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
 
     let mut catalog = Catalog::default();

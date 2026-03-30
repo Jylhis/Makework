@@ -1,6 +1,6 @@
 use std::process::Command;
 
-use mw_core::catalog::Catalog;
+use mw_core::catalog::{Catalog, SyncOptions};
 use mw_core::config::MakeworkConfig;
 
 fn setup_temp_git_repo(dir: &std::path::Path) {
@@ -59,11 +59,13 @@ fn sync_discovers_git_repos() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("bare"),
         scan_roots: vec![scan_root.clone()],
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
     let mut catalog = Catalog::default();
 
     let added = catalog
-        .sync(&config, std::slice::from_ref(&scan_root))
+        .sync(&config, std::slice::from_ref(&scan_root), &SyncOptions::default())
         .unwrap();
     assert_eq!(added.len(), 2, "expected 2 repos, got: {added:?}");
     assert!(added.contains(&"repo-a".to_string()));
@@ -84,16 +86,18 @@ fn sync_is_idempotent() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("bare"),
         scan_roots: vec![scan_root.clone()],
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
     let mut catalog = Catalog::default();
 
     let first = catalog
-        .sync(&config, std::slice::from_ref(&scan_root))
+        .sync(&config, std::slice::from_ref(&scan_root), &SyncOptions::default())
         .unwrap();
     assert_eq!(first.len(), 1);
 
     // Second run: should not add any new repos
-    let second = catalog.sync(&config, &[scan_root]).unwrap();
+    let second = catalog.sync(&config, &[scan_root], &SyncOptions::default()).unwrap();
     assert_eq!(
         second.len(),
         1,

@@ -8,6 +8,24 @@ use crate::config::MakeworkConfig;
 use crate::project::{NixConfig, Subproject};
 use crate::repository::Repository;
 
+/// Options for controlling how [`Catalog::sync`] discovers repositories.
+#[derive(Debug, Clone)]
+pub struct SyncOptions {
+    /// Maximum directory depth to recurse when scanning. Default is `1`.
+    pub max_depth: u32,
+    /// Directory name patterns to skip during scanning (exact match).
+    pub exclude: Vec<String>,
+}
+
+impl Default for SyncOptions {
+    fn default() -> Self {
+        Self {
+            max_depth: 1,
+            exclude: Vec::new(),
+        }
+    }
+}
+
 /// Summary of what [`Catalog::init`] created or found.
 #[derive(Debug, Default)]
 pub struct InitResult {
@@ -273,39 +291,32 @@ impl Catalog {
 
     /// Scan directories for git repositories not yet in the catalog.
     ///
-    /// Walks each `scan_root` one level deep (non-recursive), looking for
-    /// directories that contain `.git` or `HEAD`. Calls [`catalog_add`] for
-    /// each discovered repo. Returns the list of newly registered repo names.
+    /// Walks each `scan_root` up to `options.max_depth` levels deep, looking
+    /// for directories that contain a `.git` directory. Skips entries matching
+    /// `options.exclude` patterns, submodules (`.git` is a file), and bare
+    /// repos. Calls [`catalog_add`] for each discovered repo. Returns the
+    /// list of newly registered repo names.
     pub fn sync(
         &mut self,
         config: &MakeworkConfig,
         scan_roots: &[PathBuf],
+        options: &SyncOptions,
     ) -> Result<Vec<String>, CatalogError> {
         let mut added = Vec::new();
         for root in scan_roots {
             if !root.exists() {
                 continue;
             }
-            let entries = std::fs::read_dir(root).map_err(|e| CatalogError::Io(root.clone(), e))?;
-            for entry in entries {
-                let entry = entry.map_err(|e| CatalogError::Io(root.clone(), e))?;
-                let path = entry.path();
-                if !path.is_dir() {
-                    continue;
-                }
-                let is_git = path.join(".git").exists() || path.join("HEAD").exists();
-                if !is_git {
-                    continue;
-                }
-                match self.catalog_add(&path, config) {
+            let repos = walk_for_repos(root, 0, options)?;
+            for repo_path in repos {
+                match self.catalog_add(&repo_path, config) {
                     Ok(name) => {
-                        // catalog_add is idempotent; check if it was actually new
                         if !added.contains(&name) {
                             added.push(name);
                         }
                     }
                     Err(e) => {
-                        eprintln!("Warning: skipping {}: {e}", path.display());
+                        eprintln!("Warning: skipping {}: {e}", repo_path.display());
                     }
                 }
             }
@@ -507,6 +518,59 @@ impl Catalog {
 
         Ok(repo_name)
     }
+}
+
+/// Recursively walk directories to find git repositories.
+fn walk_for_repos(
+    dir: &Path,
+    current_depth: u32,
+    options: &SyncOptions,
+) -> Result<Vec<PathBuf>, CatalogError> {
+    let mut repos = Vec::new();
+    let entries = std::fs::read_dir(dir).map_err(|e| CatalogError::Io(dir.to_path_buf(), e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| CatalogError::Io(dir.to_path_buf(), e))?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        // Skip entries matching exclude patterns
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            if options.exclude.iter().any(|pat| pat == name) {
+                continue;
+            }
+        }
+
+        let dot_git = path.join(".git");
+
+        // Detect submodule: .git is a file (not dir), skip
+        if dot_git.exists() && !dot_git.is_dir() {
+            continue;
+        }
+
+        // Detect bare repo: HEAD + objects/ exist but no .git → skip
+        if !dot_git.exists()
+            && path.join("HEAD").exists()
+            && path.join("objects").exists()
+        {
+            continue;
+        }
+
+        // Real repo: .git is a directory
+        if dot_git.is_dir() {
+            repos.push(path);
+            // Do not recurse into repos
+            continue;
+        }
+
+        // Otherwise recurse if within depth limit
+        if current_depth + 1 < options.max_depth {
+            let sub = walk_for_repos(&path, current_depth + 1, options)?;
+            repos.extend(sub);
+        }
+    }
+    Ok(repos)
 }
 
 fn create_dir_tracking(path: &Path, result: &mut InitResult) -> Result<(), CatalogError> {

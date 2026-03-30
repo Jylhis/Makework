@@ -400,6 +400,8 @@ mod tests {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
             scan_roots: Vec::new(),
+            sync_max_depth: None,
+            sync_exclude: Vec::new(),
         };
         let parsed = ParsedUrl {
             host: "github.com".to_string(),
@@ -419,6 +421,8 @@ mod tests {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
             scan_roots: Vec::new(),
+            sync_max_depth: None,
+            sync_exclude: Vec::new(),
         };
         let parsed = ParsedUrl {
             host: "github.com".to_string(),
@@ -438,6 +442,8 @@ mod tests {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
             scan_roots: Vec::new(),
+            sync_max_depth: None,
+            sync_exclude: Vec::new(),
         };
 
         let result = worktree_path(&config, None, "my-project", "develop");
@@ -453,6 +459,8 @@ mod tests {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
             scan_roots: Vec::new(),
+            sync_max_depth: None,
+            sync_exclude: Vec::new(),
         };
 
         let result = worktree_path(&config, None, "my-project", "feature/auth");
@@ -468,6 +476,8 @@ mod tests {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
             scan_roots: Vec::new(),
+            sync_max_depth: None,
+            sync_exclude: Vec::new(),
         };
         let parsed = ParsedUrl {
             host: "gitlab.com".to_string(),

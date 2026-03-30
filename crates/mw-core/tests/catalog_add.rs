@@ -47,6 +47,8 @@ fn catalog_add_registers_local_repo() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
         scan_roots: Vec::new(),
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
 
     // Set XDG config dir to temp to avoid polluting real config
@@ -83,6 +85,8 @@ fn catalog_add_creates_default_worktree() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
         scan_roots: Vec::new(),
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
 
     let mut catalog = Catalog::default();
@@ -129,6 +133,8 @@ fn catalog_add_falls_back_when_remote_unreachable() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
         scan_roots: Vec::new(),
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
 
     let mut catalog = Catalog::default();
@@ -162,6 +168,8 @@ fn catalog_add_rejects_non_git_dir() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
         scan_roots: Vec::new(),
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
 
     let mut catalog = Catalog::default();
@@ -176,6 +184,8 @@ fn catalog_add_url_rejects_invalid_url() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
         scan_roots: Vec::new(),
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
 
     let mut catalog = Catalog::default();
@@ -198,6 +208,8 @@ fn catalog_add_url_is_idempotent() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
         scan_roots: Vec::new(),
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
 
     let mut catalog = Catalog::default();
@@ -223,6 +235,8 @@ fn catalog_add_url_from_github() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
         scan_roots: Vec::new(),
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
 
     let mut catalog = Catalog::default();

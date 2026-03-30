@@ -14,6 +14,8 @@ fn init_creates_directories() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
         scan_roots: Vec::new(),
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
 
     let result = Catalog::init(&config).expect("init should succeed");
@@ -35,6 +37,8 @@ fn init_is_idempotent() {
         worktree_root: tmp.path().join("worktrees"),
         bare_root: tmp.path().join("repos"),
         scan_roots: Vec::new(),
+        sync_max_depth: None,
+        sync_exclude: Vec::new(),
     };
 
     let result1 = Catalog::init(&config).expect("first init");

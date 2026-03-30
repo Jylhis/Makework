@@ -16,6 +16,10 @@ pub struct MakeworkConfig {
     pub bare_root: PathBuf,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scan_roots: Vec<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_max_depth: Option<u32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sync_exclude: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -36,7 +40,7 @@ impl std::fmt::Display for ConfigError {
             ConfigError::HomeDirNotFound => write!(f, "could not determine home directory"),
             ConfigError::UnknownKey(key) => write!(
                 f,
-                "unknown config key: {key} (supported: worktree_root, bare_root, scan_roots)"
+                "unknown config key: {key} (supported: worktree_root, bare_root, scan_roots, sync_max_depth, sync_exclude)"
             ),
         }
     }
@@ -97,6 +101,8 @@ impl MakeworkConfig {
             worktree_root: data_dir.join("worktrees"),
             bare_root: data_dir.join("repos"),
             scan_roots: Vec::new(),
+            sync_max_depth: None,
+            sync_exclude: Vec::new(),
         })
     }
 
@@ -221,6 +227,20 @@ impl MakeworkConfig {
                     .map(|s| expand_tilde(Path::new(s.trim())))
                     .collect::<Result<Vec<_>, _>>()?;
             }
+            "sync_max_depth" => {
+                config.sync_max_depth = Some(
+                    value
+                        .parse::<u32>()
+                        .map_err(|e| ConfigError::UnknownKey(format!("invalid depth: {e}")))?,
+                );
+            }
+            "sync_exclude" => {
+                config.sync_exclude = value
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
             _ => {
                 return Err(ConfigError::UnknownKey(key.to_string()));
             }
@@ -295,6 +315,8 @@ mod tests {
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
             scan_roots: Vec::new(),
+            sync_max_depth: None,
+            sync_exclude: Vec::new(),
         };
         let file = ConfigFile {
             config: config.clone(),
@@ -333,6 +355,8 @@ bare_root = "~/.local/share/makework/repos"
             worktree_root: PathBuf::from("/data/worktrees"),
             bare_root: PathBuf::from("/data/repos"),
             scan_roots: Vec::new(),
+            sync_max_depth: None,
+            sync_exclude: Vec::new(),
         };
         let entries = config.config_show().unwrap();
         assert_eq!(entries.len(), 2);
