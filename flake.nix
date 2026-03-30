@@ -144,5 +144,6 @@
 
       nixosModules.default = import ./nix/module.nix self;
       homeManagerModules.default = import ./nix/home-manager.nix self;
+      flakeModules.default = ./nix/flake-parts-module.nix;
     };
 }
