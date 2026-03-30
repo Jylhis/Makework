@@ -266,33 +266,26 @@ impl Catalog {
         }
 
         // 3. Subproject names — collect all matches
-        let mut sub_matches: Vec<(&Repository, &str, Option<&NixConfig>, Option<&[String]>)> =
-            Vec::new();
+        let mut sub_matches: Vec<ResolvedProject<'_>> = Vec::new();
         for repo in self.repos.values() {
             for project in repo.projects.values() {
                 if let Some(sub) = project.subprojects.get(name) {
-                    sub_matches.push((
+                    sub_matches.push(ResolvedProject {
                         repo,
-                        sub.subproject_path.as_str(),
-                        sub.nix.as_ref(),
-                        sub.sparse_paths.as_deref(),
-                    ));
+                        subproject_path: Some(sub.subproject_path.as_str()),
+                        nix_config: sub.nix.as_ref(),
+                        sparse_paths: sub.sparse_paths.as_deref(),
+                    });
                 }
             }
         }
         if sub_matches.len() == 1 {
-            let (repo, path, nix, sparse) = sub_matches[0];
-            return Ok(ResolvedProject {
-                repo,
-                subproject_path: Some(path),
-                nix_config: nix,
-                sparse_paths: sparse,
-            });
+            return Ok(sub_matches.remove(0));
         }
         if sub_matches.len() > 1 {
             return Err(CatalogError::AmbiguousProject {
                 name: name.to_string(),
-                repos: sub_matches.iter().map(|(r, _, _, _)| r.name.clone()).collect(),
+                repos: sub_matches.iter().map(|r| r.repo.name.clone()).collect(),
             });
         }
 

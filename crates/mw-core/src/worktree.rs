@@ -125,10 +125,7 @@ pub fn enable_sparse_checkout(worktree_path: &Path, paths: &[String]) -> Result<
 
 /// Disable sparse-checkout on a worktree, restoring the full checkout.
 pub fn disable_sparse_checkout(worktree_path: &Path) -> Result<(), GitError> {
-    let cmd_str = format!(
-        "git -C {} sparse-checkout disable",
-        worktree_path.display()
-    );
+    let cmd_str = format!("git -C {} sparse-checkout disable", worktree_path.display());
     let output = Command::new("git")
         .arg("-C")
         .arg(worktree_path)
@@ -691,5 +688,127 @@ detached
         assert_eq!(worktrees.len(), 1);
         assert_eq!(worktrees[0].path, PathBuf::from("/tmp/bare.git"));
         assert!(worktrees[0].is_bare);
+    }
+
+    #[test]
+    fn enable_sparse_checkout_runs_git_commands() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        // git init + commit so sparse-checkout has something to work with
+        Command::new("git")
+            .args(["init"])
+            .arg(&repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["-C"])
+            .arg(&repo)
+            .args(["config", "user.email", "test@test.com"])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["-C"])
+            .arg(&repo)
+            .args(["config", "user.name", "Test"])
+            .output()
+            .unwrap();
+
+        // Create files in src/ and docs/
+        std::fs::create_dir_all(repo.join("src")).unwrap();
+        std::fs::create_dir_all(repo.join("docs")).unwrap();
+        std::fs::write(repo.join("src/main.rs"), "fn main() {}").unwrap();
+        std::fs::write(repo.join("docs/README.md"), "# Docs").unwrap();
+
+        Command::new("git")
+            .args(["-C"])
+            .arg(&repo)
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["-C"])
+            .arg(&repo)
+            .args(["commit", "-m", "initial"])
+            .output()
+            .unwrap();
+
+        let paths = vec!["src".to_string(), "docs".to_string()];
+        enable_sparse_checkout(&repo, &paths).expect("enable_sparse_checkout should succeed");
+
+        // Verify sparse-checkout list contains the paths
+        let output = Command::new("git")
+            .args(["-C"])
+            .arg(&repo)
+            .args(["sparse-checkout", "list"])
+            .output()
+            .unwrap();
+        let list = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            list.contains("src"),
+            "sparse-checkout list should contain src"
+        );
+        assert!(
+            list.contains("docs"),
+            "sparse-checkout list should contain docs"
+        );
+    }
+
+    #[test]
+    fn disable_sparse_checkout_restores_full() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+
+        Command::new("git")
+            .args(["init"])
+            .arg(&repo)
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["-C"])
+            .arg(&repo)
+            .args(["config", "user.email", "test@test.com"])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["-C"])
+            .arg(&repo)
+            .args(["config", "user.name", "Test"])
+            .output()
+            .unwrap();
+        std::fs::create_dir_all(repo.join("src")).unwrap();
+        std::fs::write(repo.join("src/main.rs"), "fn main() {}").unwrap();
+        Command::new("git")
+            .args(["-C"])
+            .arg(&repo)
+            .args(["add", "."])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .args(["-C"])
+            .arg(&repo)
+            .args(["commit", "-m", "initial"])
+            .output()
+            .unwrap();
+
+        let paths = vec!["src".to_string()];
+        enable_sparse_checkout(&repo, &paths).unwrap();
+        disable_sparse_checkout(&repo).expect("disable_sparse_checkout should succeed");
+
+        // After disable, sparse-checkout should be off
+        let output = Command::new("git")
+            .args(["-C"])
+            .arg(&repo)
+            .args(["config", "core.sparseCheckout"])
+            .output()
+            .unwrap();
+        let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        // sparseCheckout should be false or the config key may not exist
+        assert!(
+            !output.status.success() || value == "false",
+            "sparse checkout should be disabled"
+        );
     }
 }
