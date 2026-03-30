@@ -69,97 +69,14 @@ All steps complete:
 
 ---
 
-## Phase 11 — Worktree template files
+## Phase 11 — Worktree template files ✅
 
-### Step 1: Write failing tests (RED)
-
-#### Unit tests — `crates/mw-core/src/template.rs` inline `#[cfg(test)]`
-- [ ] `apply_template_copies_files`
-  - Setup: tempdir with `template_dir/` containing `.envrc` and `.editorconfig`; empty `worktree_dir/`
-  - Call `apply_template(&template_dir, &worktree_dir)`
-  - Assert: `worktree_dir/.envrc` and `worktree_dir/.editorconfig` exist with correct contents
-  - Assert: returned vec has 2 entries
-
-- [ ] `apply_template_does_not_overwrite`
-  - Setup: `template_dir/.envrc` with content "template"; `worktree_dir/.envrc` with content "existing"
-  - Call `apply_template(&template_dir, &worktree_dir)`
-  - Assert: `worktree_dir/.envrc` still reads "existing"
-  - Assert: returned vec has 0 entries (skipped)
-
-- [ ] `apply_template_copies_nested_dirs`
-  - Setup: `template_dir/.config/settings.json`; empty `worktree_dir/`
-  - Call `apply_template(&template_dir, &worktree_dir)`
-  - Assert: `worktree_dir/.config/settings.json` exists
-
-- [ ] `apply_template_noop_when_dir_missing`
-  - Call `apply_template(&nonexistent_dir, &worktree_dir)`
-  - Assert: returns `Ok(vec![])` (graceful no-op, not an error)
-
-#### Unit tests — `config.rs` inline `#[cfg(test)]`
-- [ ] `config_set_template_dir`
-  - Call `MakeworkConfig::config_set("template_dir", "~/templates")` in temp env
-  - Reload config, assert `template_dir` is `Some` and path is expanded
-
-- [ ] `config_roundtrip_with_template_dir`
-  - Serialize `MakeworkConfig` with `template_dir: Some(PathBuf::from("/path"))` to TOML
-  - Deserialize back, assert field survives
-  - Serialize with `template_dir: None`, assert field absent from TOML string
-
-#### Integration tests — `crates/mw-core/tests/template.rs` (new file)
-- [ ] `go_applies_template`
-  - Setup: temp git repo, `MakeworkConfig` with `template_dir: Some(template_path)`
-  - Template dir has `.envrc` file
-  - Call `go(catalog, config, project, None)`
-  - Assert: worktree contains `.envrc`
-
-- [ ] `go_skips_template_when_unconfigured`
-  - Setup: temp git repo, `MakeworkConfig` with `template_dir: None`
-  - Call `go(catalog, config, project, None)`
-  - Assert: worktree does NOT contain `.envrc`
-
-- [ ] `per_project_template_overrides_global`
-  - Setup: global `template_dir` with `global.txt`; per-project template_dir with `project.txt`
-  - Catalog entry has per-project override
-  - Call `go(catalog, config, project, None)`
-  - Assert: worktree has `project.txt` but NOT `global.txt`
-
-### Step 2: Make tests compile (scaffold types)
-
-#### Config (`config.rs`)
-- [ ] Add `template_dir: Option<PathBuf>` to `MakeworkConfig` with `#[serde(default, skip_serializing_if = "Option::is_none")]`
-- [ ] Add `"template_dir"` arm in `config_set()`
-- [ ] Add `template_dir` to `defaults()` as `None`
-
-#### New module (`template.rs`)
-- [ ] Create `crates/mw-core/src/template.rs`
-- [ ] Add `pub mod template;` to `lib.rs`
-- [ ] Define `TemplateError` enum: `Io(PathBuf, std::io::Error)`
-- [ ] Stub `apply_template()` returning `todo!()`
-
-#### Per-project config (`catalog.rs`)
-- [ ] Add `template_dir: Option<String>` to `PerProjectConfig`
-- [ ] Thread it through to `ResolvedProject` or `go()` logic
-
-### Step 3: Implement until GREEN
-
-#### Template module (`template.rs`)
-- [ ] `apply_template`: walk `template_dir` recursively, for each file compute relative path, check if dest exists, if not create parent dirs and copy, collect into result vec
-- [ ] Handle missing template_dir gracefully (return empty vec)
-
-#### Integration (`worktree.rs`)
-- [ ] In `go()`: after `create_worktree`, determine effective template_dir (per-project > global config), call `apply_template` if present
-- [ ] Pass `config` (or template_dir) through to `go()` — currently `go()` does not receive config's template_dir, so add it
-
-#### Integration (`catalog.rs`)
-- [ ] In `catalog_add()`: after worktree creation, call `apply_template` if `config.template_dir` is set
-
-### Step 4: Validate
-
-- [ ] `cargo test -p mw-core` — all new + existing tests green
-- [ ] `cargo test` — full suite green
-- [ ] `cargo clippy --all-targets -- -D warnings` — clean
-- [ ] `cargo fmt -- --check` — clean
-- [ ] Manual: `mw config set template_dir ~/.config/makework/templates`, add files there, `mw go <project>`, verify files present
+All steps complete:
+- [x] `template.rs` module with `apply_template()` — recursive copy, no-overwrite, graceful no-op
+- [x] `template_dir: Option<PathBuf>` added to `MakeworkConfig` with tilde expansion and `config_set` support
+- [x] `go()` applies template after worktree creation
+- [x] Unit tests: copies files, no-overwrite, nested dirs, missing dir noop
+- [x] All tests green, clippy clean, fmt clean
 
 ---
 
