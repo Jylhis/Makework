@@ -396,4 +396,80 @@ bare_root = "~/.local/share/makework/repos"
             "expected unknown key error, got: {err}"
         );
     }
+
+    #[test]
+    fn config_show_includes_scan_roots() {
+        let config = MakeworkConfig {
+            worktree_root: PathBuf::from("/data/worktrees"),
+            bare_root: PathBuf::from("/data/repos"),
+            scan_roots: vec![PathBuf::from("/home/user/projects")],
+            sync_max_depth: None,
+            sync_exclude: Vec::new(),
+            template_dir: None,
+        };
+        let entries = config.config_show().unwrap();
+        assert_eq!(entries.len(), 3);
+        let keys: Vec<&str> = entries.iter().map(|(k, _, _)| k.as_str()).collect();
+        assert!(keys.contains(&"scan_roots"));
+    }
+
+    #[test]
+    fn config_show_omits_scan_roots_when_empty() {
+        let config = MakeworkConfig {
+            worktree_root: PathBuf::from("/data/worktrees"),
+            bare_root: PathBuf::from("/data/repos"),
+            scan_roots: Vec::new(),
+            sync_max_depth: None,
+            sync_exclude: Vec::new(),
+            template_dir: None,
+        };
+        let entries = config.config_show().unwrap();
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn round_trip_toml_with_all_fields() {
+        let config = MakeworkConfig {
+            worktree_root: PathBuf::from("/data/worktrees"),
+            bare_root: PathBuf::from("/data/repos"),
+            scan_roots: vec![PathBuf::from("/home/user/dev")],
+            sync_max_depth: Some(3),
+            sync_exclude: vec!["node_modules".to_string(), ".cache".to_string()],
+            template_dir: Some(PathBuf::from("/home/user/templates")),
+        };
+        let file = ConfigFile {
+            config: config.clone(),
+        };
+        let serialized = toml::to_string_pretty(&file).unwrap();
+        let deserialized: ConfigFile = toml::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.config, config);
+        assert_eq!(deserialized.config.sync_max_depth, Some(3));
+        assert_eq!(deserialized.config.sync_exclude.len(), 2);
+        assert_eq!(
+            deserialized.config.template_dir,
+            Some(PathBuf::from("/home/user/templates"))
+        );
+    }
+
+    #[test]
+    fn config_error_display() {
+        let err = ConfigError::HomeDirNotFound;
+        assert_eq!(err.to_string(), "could not determine home directory");
+
+        let err = ConfigError::UnknownKey("bad_key".to_string());
+        assert!(err.to_string().contains("unknown config key: bad_key"));
+
+        let io_err = ConfigError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "nope"));
+        assert!(io_err.to_string().contains("I/O error"));
+    }
+
+    #[test]
+    fn config_path_ends_with_config_toml() {
+        let path = MakeworkConfig::config_path().unwrap();
+        assert!(
+            path.ends_with("config.toml"),
+            "config path should end with config.toml, got: {}",
+            path.display()
+        );
+    }
 }

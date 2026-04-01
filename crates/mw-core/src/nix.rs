@@ -166,6 +166,95 @@ mod tests {
     }
 
     #[test]
+    fn explicit_config_with_devshell() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = NixConfig {
+            nix_type: Some(NixType::Flake),
+            devshell: Some("myshell".to_string()),
+            path: None,
+        };
+        let result = detect_nix(tmp.path(), Some(&config)).unwrap();
+        assert_eq!(result.nix_type, NixType::Flake);
+        assert_eq!(result.activation_command, "nix develop .#myshell");
+    }
+
+    #[test]
+    fn explicit_config_custom_type() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = NixConfig {
+            nix_type: Some(NixType::Custom),
+            devshell: None,
+            path: None,
+        };
+        let result = detect_nix(tmp.path(), Some(&config)).unwrap();
+        assert_eq!(result.nix_type, NixType::Custom);
+        assert_eq!(result.activation_command, "echo 'custom nix setup'");
+    }
+
+    #[test]
+    fn envrc_use_nix_classic() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(".envrc"), "use nix\n").unwrap();
+        let result = detect_nix(tmp.path(), None).unwrap();
+        assert_eq!(result.nix_type, NixType::Classic);
+        assert_eq!(result.activation_command, "nix-shell");
+    }
+
+    #[test]
+    fn envrc_use_flake_underscore_variant() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(".envrc"), "use_flake\n").unwrap();
+        let result = detect_nix(tmp.path(), None).unwrap();
+        assert_eq!(result.nix_type, NixType::Flake);
+    }
+
+    #[test]
+    fn envrc_use_nix_underscore_variant() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(".envrc"), "use_nix\n").unwrap();
+        let result = detect_nix(tmp.path(), None).unwrap();
+        assert_eq!(result.nix_type, NixType::Classic);
+    }
+
+    #[test]
+    fn envrc_use_devenv_underscore_variant() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(".envrc"), "use_devenv\n").unwrap();
+        let result = detect_nix(tmp.path(), None).unwrap();
+        assert_eq!(result.nix_type, NixType::Devenv);
+    }
+
+    #[test]
+    fn envrc_with_comments_and_blank_lines() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "# This is a comment\n\n# Another comment\nuse flake\n";
+        std::fs::write(tmp.path().join(".envrc"), content).unwrap();
+        let result = detect_nix(tmp.path(), None).unwrap();
+        assert_eq!(result.nix_type, NixType::Flake);
+    }
+
+    #[test]
+    fn envrc_without_nix_directives_returns_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(".envrc"), "export FOO=bar\n").unwrap();
+        assert!(detect_nix(tmp.path(), None).is_none());
+    }
+
+    #[test]
+    fn explicit_config_without_type_falls_through() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Config with no nix_type set should fall through to file detection
+        let config = NixConfig {
+            nix_type: None,
+            devshell: None,
+            path: None,
+        };
+        std::fs::write(tmp.path().join("shell.nix"), "{}").unwrap();
+        let result = detect_nix(tmp.path(), Some(&config)).unwrap();
+        assert_eq!(result.nix_type, NixType::Classic);
+    }
+
+    #[test]
     fn precedence_order_flake_over_shell() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("flake.nix"), "{}").unwrap();

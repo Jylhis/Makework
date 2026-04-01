@@ -951,6 +951,134 @@ mod tests {
     }
 
     #[test]
+    fn find_repo_returns_some_for_existing() {
+        use crate::repository::Repository;
+
+        let mut catalog = Catalog::default();
+        catalog.repos.insert(
+            "myrepo".to_string(),
+            Repository {
+                name: "myrepo".to_string(),
+                path: PathBuf::from("/tmp/myrepo"),
+                url: None,
+                main_branch: "main".to_string(),
+                remotes: BTreeMap::new(),
+                projects: BTreeMap::new(),
+            },
+        );
+
+        assert!(catalog.find_repo("myrepo").is_some());
+        assert!(catalog.find_repo("nonexistent").is_none());
+    }
+
+    #[test]
+    fn resolve_project_is_alias_for_find_project() {
+        use crate::project::{Project, Subproject};
+        use crate::repository::Repository;
+
+        let mut catalog = Catalog::default();
+        let mut project = Project {
+            name: "proj".to_string(),
+            ..Default::default()
+        };
+        project.subprojects.insert(
+            "sub".to_string(),
+            Subproject {
+                name: "sub".to_string(),
+                subproject_path: "services/sub".to_string(),
+                ..Default::default()
+            },
+        );
+        let repo = Repository {
+            name: "myrepo".to_string(),
+            path: PathBuf::from("/tmp/myrepo"),
+            url: None,
+            main_branch: "main".to_string(),
+            remotes: BTreeMap::new(),
+            projects: BTreeMap::from([("proj".to_string(), project)]),
+        };
+        catalog.repos.insert("myrepo".to_string(), repo);
+
+        // resolve_project should return the same as find_project
+        let (r1, s1) = catalog.resolve_project("myrepo").unwrap();
+        let (r2, s2) = catalog.find_project("myrepo").unwrap();
+        assert_eq!(r1.name, r2.name);
+        assert_eq!(s1, s2);
+
+        let (r1, s1) = catalog.resolve_project("sub").unwrap();
+        let (r2, s2) = catalog.find_project("sub").unwrap();
+        assert_eq!(r1.name, r2.name);
+        assert_eq!(s1, s2);
+        assert_eq!(s1, Some("services/sub"));
+    }
+
+    #[test]
+    fn find_project_not_found_returns_none() {
+        let catalog = Catalog::default();
+        assert!(catalog.find_project("nonexistent").is_none());
+    }
+
+    #[test]
+    fn catalog_error_display_messages() {
+        let err = CatalogError::RepoNotFound("missing".to_string());
+        assert_eq!(err.to_string(), "repository not found: missing");
+
+        let err = CatalogError::NotGitRepo(PathBuf::from("/tmp/not-git"));
+        assert!(err.to_string().contains("not a git repository"));
+
+        let err = CatalogError::DuplicateSubproject {
+            name: "api".to_string(),
+            repo: "myrepo".to_string(),
+        };
+        assert!(err.to_string().contains("duplicate subproject"));
+
+        let err = CatalogError::AmbiguousProject {
+            name: "shared".to_string(),
+            repos: vec!["r1".to_string(), "r2".to_string()],
+        };
+        assert!(err.to_string().contains("ambiguous"));
+    }
+
+    #[test]
+    fn validate_unique_subprojects_passes_when_unique() {
+        use crate::project::{Project, Subproject};
+        use crate::repository::Repository;
+
+        let mut catalog = Catalog::default();
+        let mut proj = Project {
+            name: "proj".to_string(),
+            ..Default::default()
+        };
+        proj.subprojects.insert(
+            "api".to_string(),
+            Subproject {
+                name: "api".to_string(),
+                subproject_path: "services/api".to_string(),
+                ..Default::default()
+            },
+        );
+        proj.subprojects.insert(
+            "web".to_string(),
+            Subproject {
+                name: "web".to_string(),
+                subproject_path: "services/web".to_string(),
+                ..Default::default()
+            },
+        );
+        let repo = Repository {
+            name: "r1".to_string(),
+            path: PathBuf::from("/tmp/r1"),
+            url: None,
+            main_branch: "main".to_string(),
+            remotes: BTreeMap::new(),
+            projects: BTreeMap::from([("proj".to_string(), proj)]),
+        };
+        catalog.repos.insert("r1".to_string(), repo);
+
+        assert!(catalog.validate_unique_subprojects().is_ok());
+    }
+
+    #[test]
     fn find_project_unambiguous_succeeds_when_unique() {
         use crate::project::{Project, Subproject};
         use crate::repository::Repository;

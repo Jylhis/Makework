@@ -143,3 +143,116 @@ pub fn get_all_status(
     }
     results
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn worktree_status_json_round_trip() {
+        let status = WorktreeStatus {
+            path: PathBuf::from("/tmp/wt/main"),
+            branch: "main".to_string(),
+            dirty_count: 3,
+            ahead: 1,
+            behind: 2,
+            is_orphaned: false,
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        let deserialized: WorktreeStatus = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.branch, "main");
+        assert_eq!(deserialized.dirty_count, 3);
+        assert_eq!(deserialized.ahead, 1);
+        assert_eq!(deserialized.behind, 2);
+        assert!(!deserialized.is_orphaned);
+    }
+
+    #[test]
+    fn repo_status_cache_json_round_trip() {
+        let cache = RepoStatusCache {
+            repo_name: "test-repo".to_string(),
+            updated_at: "2026-04-01T12:00:00Z".to_string(),
+            worktrees: vec![
+                WorktreeStatus {
+                    path: PathBuf::from("/tmp/wt/main"),
+                    branch: "main".to_string(),
+                    dirty_count: 0,
+                    ahead: 0,
+                    behind: 0,
+                    is_orphaned: false,
+                },
+                WorktreeStatus {
+                    path: PathBuf::from("/tmp/wt/feature"),
+                    branch: "feature/auth".to_string(),
+                    dirty_count: 5,
+                    ahead: 3,
+                    behind: 0,
+                    is_orphaned: false,
+                },
+            ],
+        };
+        let json = serde_json::to_string_pretty(&cache).unwrap();
+        let deserialized: RepoStatusCache = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.repo_name, "test-repo");
+        assert_eq!(deserialized.worktrees.len(), 2);
+        assert_eq!(deserialized.worktrees[1].dirty_count, 5);
+    }
+
+    #[test]
+    fn write_and_read_cache_round_trip() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Override XDG_STATE_HOME so cache goes into our temp dir
+        // SAFETY: test runs single-threaded for this env var
+        unsafe {
+            std::env::set_var("XDG_STATE_HOME", tmp.path());
+        }
+
+        let cache = RepoStatusCache {
+            repo_name: "roundtrip-test".to_string(),
+            updated_at: "2026-04-01".to_string(),
+            worktrees: vec![WorktreeStatus {
+                path: PathBuf::from("/tmp/wt/main"),
+                branch: "main".to_string(),
+                dirty_count: 2,
+                ahead: 0,
+                behind: 1,
+                is_orphaned: false,
+            }],
+        };
+
+        write_cache(&cache).expect("write_cache should succeed");
+        let loaded = read_cache("roundtrip-test").expect("read_cache should return Some");
+        assert_eq!(loaded.repo_name, "roundtrip-test");
+        assert_eq!(loaded.worktrees.len(), 1);
+        assert_eq!(loaded.worktrees[0].dirty_count, 2);
+        assert_eq!(loaded.worktrees[0].behind, 1);
+
+        unsafe {
+            std::env::remove_var("XDG_STATE_HOME");
+        }
+    }
+
+    #[test]
+    fn read_cache_nonexistent_returns_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        // SAFETY: test runs single-threaded for this env var
+        unsafe {
+            std::env::set_var("XDG_STATE_HOME", tmp.path());
+        }
+
+        let result = read_cache("nonexistent-repo");
+        assert!(result.is_none());
+
+        unsafe {
+            std::env::remove_var("XDG_STATE_HOME");
+        }
+    }
+
+    #[test]
+    fn get_worktree_status_nonexistent_path_is_orphaned() {
+        let status = get_worktree_status(Path::new("/nonexistent/path/to/worktree"));
+        assert!(status.is_orphaned);
+        assert_eq!(status.branch, "unknown");
+        assert_eq!(status.dirty_count, 0);
+    }
+}

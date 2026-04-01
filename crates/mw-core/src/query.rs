@@ -206,6 +206,57 @@ mod tests {
     }
 
     #[test]
+    fn parse_git_log_line_with_tabs_in_message() {
+        let line = "abc1234\tTest User\t2026-03-29T10:00:00+00:00\tfix: something\twith\ttabs";
+        let entry = parse_git_log_line(line, "myrepo", "main", &PathBuf::from("/tmp/wt")).unwrap();
+        // splitn(4, '\t') means the message captures everything after the 3rd tab
+        assert_eq!(entry.message, "fix: something\twith\ttabs");
+    }
+
+    #[test]
+    fn parse_git_log_line_minimal_fields() {
+        let line = "hash\tauthor\tdate\t";
+        let entry = parse_git_log_line(line, "repo", "main", &PathBuf::from("/tmp")).unwrap();
+        assert_eq!(entry.commit_hash, "hash");
+        assert_eq!(entry.message, "");
+    }
+
+    #[test]
+    fn parse_git_log_line_three_fields_returns_none() {
+        let line = "hash\tauthor\tdate";
+        assert!(parse_git_log_line(line, "repo", "main", &PathBuf::from("/tmp")).is_none());
+    }
+
+    #[test]
+    fn dedup_entries_empty_vec() {
+        let mut entries: Vec<ActivityEntry> = Vec::new();
+        dedup_entries(&mut entries);
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn dedup_entries_single_entry() {
+        let mut entries = vec![ActivityEntry {
+            repo_name: "repo".to_string(),
+            branch: "main".to_string(),
+            commit_hash: "abc".to_string(),
+            author: "A".to_string(),
+            date: "2026-01-01".to_string(),
+            message: "msg".to_string(),
+            worktree_path: PathBuf::from("/wt"),
+        }];
+        dedup_entries(&mut entries);
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn summary_empty_input() {
+        let entries: Vec<ActivityEntry> = Vec::new();
+        let summary = query_activity_summary(&entries);
+        assert!(summary.is_empty());
+    }
+
+    #[test]
     fn summary_groups_by_repo() {
         let entries = vec![
             ActivityEntry {

@@ -288,4 +288,80 @@ mod tests {
     fn parse_garbage_returns_none() {
         assert!(parse_remote_url("not-a-url").is_none());
     }
+
+    #[test]
+    fn parse_whitespace_only_returns_none() {
+        assert!(parse_remote_url("   ").is_none());
+    }
+
+    #[test]
+    fn parse_https_trims_whitespace() {
+        let parsed = parse_remote_url("  https://github.com/user/repo.git  ").unwrap();
+        assert_eq!(parsed.host, "github.com");
+        assert_eq!(parsed.segments, vec!["user", "repo"]);
+    }
+
+    #[test]
+    fn parse_ssh_protocol_with_port() {
+        let parsed = parse_remote_url("ssh://git@github.com:22/user/repo.git").unwrap();
+        assert_eq!(parsed.host, "github.com");
+        assert_eq!(parsed.segments, vec!["user", "repo"]);
+    }
+
+    #[test]
+    fn parse_https_no_path_returns_none() {
+        assert!(parse_remote_url("https://github.com/").is_none());
+    }
+
+    #[test]
+    fn parse_https_host_only_returns_none() {
+        assert!(parse_remote_url("https://github.com").is_none());
+    }
+
+    #[test]
+    fn parse_http_url() {
+        let parsed = parse_remote_url("http://gitlab.internal/group/repo.git").unwrap();
+        assert_eq!(parsed.host, "gitlab.internal");
+        assert_eq!(parsed.segments, vec!["group", "repo"]);
+    }
+
+    #[test]
+    fn parse_ssh_without_user() {
+        let parsed = parse_remote_url("ssh://github.com/user/repo.git").unwrap();
+        assert_eq!(parsed.host, "github.com");
+        assert_eq!(parsed.segments, vec!["user", "repo"]);
+    }
+
+    #[test]
+    fn git_error_display() {
+        let err = GitError::Command {
+            cmd: "git clone".to_string(),
+            stderr: "fatal: error".to_string(),
+        };
+        let display = err.to_string();
+        assert!(display.contains("git clone"));
+        assert!(display.contains("fatal: error"));
+
+        let err = GitError::Gitoxide("open failed".to_string());
+        assert!(err.to_string().contains("gitoxide error: open failed"));
+    }
+
+    #[test]
+    fn parsed_url_equality() {
+        let a = ParsedUrl {
+            host: "github.com".to_string(),
+            segments: vec!["user".to_string(), "repo".to_string()],
+        };
+        let b = ParsedUrl {
+            host: "github.com".to_string(),
+            segments: vec!["user".to_string(), "repo".to_string()],
+        };
+        assert_eq!(a, b);
+
+        let c = ParsedUrl {
+            host: "gitlab.com".to_string(),
+            segments: vec!["user".to_string(), "repo".to_string()],
+        };
+        assert_ne!(a, c);
+    }
 }

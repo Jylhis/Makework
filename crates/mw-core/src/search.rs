@@ -153,6 +153,47 @@ mod tests {
     }
 
     #[test]
+    fn parse_grep_line_with_colons_in_content() {
+        let wt = PathBuf::from("/home/user/wt");
+        let line = "/home/user/wt/config.toml:10:key = \"value:with:colons\"";
+        let result = parse_grep_line(line, &wt, "repo").unwrap();
+        assert_eq!(result.file_path, "config.toml");
+        assert_eq!(result.line_number, 10);
+        assert_eq!(result.line_content, "key = \"value:with:colons\"");
+    }
+
+    #[test]
+    fn parse_grep_line_non_numeric_line_returns_none() {
+        let wt = PathBuf::from("/tmp/wt");
+        assert!(parse_grep_line("/tmp/wt/file:abc:content", &wt, "repo").is_none());
+    }
+
+    #[test]
+    fn parse_grep_line_file_outside_worktree() {
+        let wt = PathBuf::from("/home/user/wt");
+        let line = "/other/path/file.rs:5:content";
+        let result = parse_grep_line(line, &wt, "repo").unwrap();
+        // When file is not under wt, it should use the full path
+        assert_eq!(result.file_path, "/other/path/file.rs");
+        assert_eq!(result.line_number, 5);
+    }
+
+    #[test]
+    fn search_grouped_empty_input() {
+        let results: Vec<SearchResult> = Vec::new();
+        let grouped = search_grouped(&results);
+        assert!(grouped.is_empty());
+    }
+
+    #[test]
+    fn search_options_default() {
+        let opts = SearchOptions::default();
+        assert!(opts.file_glob.is_none());
+        assert!(!opts.case_insensitive);
+        assert!(opts.max_results.is_none());
+    }
+
+    #[test]
     fn search_grouped_organizes_by_repo() {
         let results = vec![
             SearchResult {
