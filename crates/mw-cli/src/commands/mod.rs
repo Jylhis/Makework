@@ -383,8 +383,8 @@ pub fn dispatch(cli: Cli) {
                         let resolver_config = config.resolver.clone().unwrap_or_default();
                         let targets = mw_core::resolver::build_targets(&catalog);
                         let visits_path = mw_core::config::MakeworkConfig::state_dir()
-                            .unwrap_or_default()
-                            .join("visits.json");
+                            .map(|d| d.join("visits.json"))
+                            .unwrap_or_else(|_| std::path::PathBuf::from("/dev/null"));
                         let visits =
                             mw_core::resolver::VisitsDb::load(&visits_path).unwrap_or_default();
                         let index = mw_core::resolver::ResolverIndex { targets, visits };
@@ -424,12 +424,13 @@ pub fn dispatch(cli: Cli) {
                                 }
 
                                 let top = &results[0];
-                                // Route to top result using exact match
+                                // Route to top result; honor explicit ref_ if provided
+                                let target_branch = ref_.as_deref().or(top.branch.as_deref());
                                 match mw_core::worktree::go(
                                     &catalog,
                                     &config,
                                     &top.repo_name,
-                                    top.branch.as_deref(),
+                                    target_branch,
                                 ) {
                                     Ok(result) => {
                                         record_visit(
@@ -1025,8 +1026,8 @@ pub fn dispatch(cli: Cli) {
                     let resolver_config = config.resolver.clone().unwrap_or_default();
                     let targets = mw_core::resolver::build_targets(&catalog);
                     let visits_path = mw_core::config::MakeworkConfig::state_dir()
-                        .unwrap_or_default()
-                        .join("visits.json");
+                        .map(|d| d.join("visits.json"))
+                        .unwrap_or_else(|_| std::path::PathBuf::from("/dev/null"));
                     let visits =
                         mw_core::resolver::VisitsDb::load(&visits_path).unwrap_or_default();
                     let index = mw_core::resolver::ResolverIndex { targets, visits };

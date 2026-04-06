@@ -191,11 +191,12 @@ pub fn parse_query(query: &str) -> Result<ParsedQuery, ResolverError> {
 impl VisitsDb {
     /// Load visits from a JSON file. Returns default if file doesn't exist.
     pub fn load(path: &Path) -> Result<Self, ResolverError> {
-        if !path.exists() {
-            return Ok(Self::default());
+        match fs::read_to_string(path) {
+            Ok(content) => serde_json::from_str(&content)
+                .map_err(|e| ResolverError::VisitsParseFailed(e.to_string())),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(e) => Err(ResolverError::VisitsIo(e)),
         }
-        let content = fs::read_to_string(path).map_err(ResolverError::VisitsIo)?;
-        serde_json::from_str(&content).map_err(|e| ResolverError::VisitsParseFailed(e.to_string()))
     }
 
     /// Save visits to a JSON file (atomic write: write temp, rename).
@@ -211,7 +212,7 @@ impl VisitsDb {
         Ok(())
     }
 
-    /// Record a visit: increment score by 1.0 and update timestamp.
+    /// Record a visit: increment score by 1.0, update timestamp, and compact if needed.
     pub fn record_visit(&mut self, key: &str, now: u64) {
         if let Some(entry) = self.entries.iter_mut().find(|e| e.key == key) {
             entry.score += 1.0;
@@ -223,6 +224,7 @@ impl VisitsDb {
                 last_visited: now,
             });
         }
+        self.compact();
     }
 
     /// Compact using the zoxide algorithm:
@@ -244,7 +246,7 @@ impl VisitsDb {
     /// Returns 0.0 if no matching entry exists.
     pub fn frecency_score(&self, key: &str, now: u64) -> f64 {
         if let Some(entry) = self.entries.iter().find(|e| e.key == key) {
-            let elapsed = (now - entry.last_visited) as f64;
+            let elapsed = now.saturating_sub(entry.last_visited) as f64;
             let time_weight = 1.0 / (1.0 + elapsed / 3600.0);
             entry.score * time_weight
         } else {
@@ -257,11 +259,11 @@ impl VisitsDb {
         let mut score = 0.0;
         for entry in &self.entries {
             if entry.key == key {
-                let elapsed = (now - entry.last_visited) as f64;
+                let elapsed = now.saturating_sub(entry.last_visited) as f64;
                 let time_weight = 1.0 / (1.0 + elapsed / 3600.0);
                 score += entry.score * time_weight;
             } else if entry.key.starts_with(repo_prefix) {
-                let elapsed = (now - entry.last_visited) as f64;
+                let elapsed = now.saturating_sub(entry.last_visited) as f64;
                 let time_weight = 1.0 / (1.0 + elapsed / 3600.0);
                 score += entry.score * time_weight * 0.5;
             }
