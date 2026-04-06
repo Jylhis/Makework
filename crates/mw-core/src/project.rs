@@ -142,7 +142,10 @@ mod tests {
         };
         let serialized = toml::to_string_pretty(&sub).unwrap();
         let deserialized: Subproject = toml::from_str(&serialized).unwrap();
-        assert_eq!(deserialized.docs, Some("https://docs.example.com".to_string()));
+        assert_eq!(
+            deserialized.docs,
+            Some("https://docs.example.com".to_string())
+        );
         assert!(deserialized.nix.is_some());
         assert_eq!(deserialized.nix.unwrap().nix_type, Some(NixType::Devenv));
     }

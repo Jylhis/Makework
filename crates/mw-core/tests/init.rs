@@ -17,6 +17,7 @@ fn init_creates_directories() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let result = Catalog::init(&config).expect("init should succeed");
@@ -41,6 +42,7 @@ fn init_is_idempotent() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let result1 = Catalog::init(&config).expect("first init");

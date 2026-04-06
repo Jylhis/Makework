@@ -186,6 +186,7 @@ fn list_all_worktrees_across_repos() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();

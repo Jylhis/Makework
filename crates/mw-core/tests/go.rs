@@ -51,6 +51,7 @@ fn go_default_branch_returns_existing_path() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -82,6 +83,7 @@ fn go_new_branch_creates_worktree() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
