@@ -487,6 +487,7 @@ mod tests {
             sync_max_depth: None,
             sync_exclude: Vec::new(),
             template_dir: None,
+            resolver: None,
         };
         let parsed = ParsedUrl {
             host: "github.com".to_string(),
@@ -509,6 +510,7 @@ mod tests {
             sync_max_depth: None,
             sync_exclude: Vec::new(),
             template_dir: None,
+            resolver: None,
         };
         let parsed = ParsedUrl {
             host: "github.com".to_string(),
@@ -531,6 +533,7 @@ mod tests {
             sync_max_depth: None,
             sync_exclude: Vec::new(),
             template_dir: None,
+            resolver: None,
         };
 
         let result = worktree_path(&config, None, "my-project", "develop");
@@ -549,6 +552,7 @@ mod tests {
             sync_max_depth: None,
             sync_exclude: Vec::new(),
             template_dir: None,
+            resolver: None,
         };
 
         let result = worktree_path(&config, None, "my-project", "feature/auth");
@@ -567,6 +571,7 @@ mod tests {
             sync_max_depth: None,
             sync_exclude: Vec::new(),
             template_dir: None,
+            resolver: None,
         };
         let parsed = ParsedUrl {
             host: "gitlab.com".to_string(),

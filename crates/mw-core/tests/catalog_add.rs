@@ -50,6 +50,7 @@ fn catalog_add_registers_local_repo() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     // Set XDG config dir to temp to avoid polluting real config
@@ -89,6 +90,7 @@ fn catalog_add_creates_default_worktree() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -138,6 +140,7 @@ fn catalog_add_falls_back_when_remote_unreachable() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -174,6 +177,7 @@ fn catalog_add_rejects_non_git_dir() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -191,6 +195,7 @@ fn catalog_add_url_rejects_invalid_url() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -216,6 +221,7 @@ fn catalog_add_url_is_idempotent() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -244,6 +250,7 @@ fn catalog_add_url_from_github() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();

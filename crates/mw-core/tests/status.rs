@@ -72,9 +72,8 @@ fn get_worktree_status_dirty_repo() {
 
 #[test]
 fn get_worktree_status_orphaned_path() {
-    let status = mw_core::status::get_worktree_status(std::path::Path::new(
-        "/nonexistent/worktree/path",
-    ));
+    let status =
+        mw_core::status::get_worktree_status(std::path::Path::new("/nonexistent/worktree/path"));
     assert!(status.is_orphaned);
     assert_eq!(status.branch, "unknown");
 }

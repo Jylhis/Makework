@@ -1277,6 +1277,7 @@ dependencies = [
  "gix",
  "serde",
  "serde_json",
+ "strsim",
  "tempfile",
  "toml",
 ]

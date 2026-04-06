@@ -70,6 +70,7 @@ mod tests {
             sync_max_depth: None,
             sync_exclude: Vec::new(),
             template_dir: None,
+            resolver: None,
         }
     }
 

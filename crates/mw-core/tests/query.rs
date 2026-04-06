@@ -90,6 +90,7 @@ fn query_activity_finds_recent_commits() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -129,6 +130,7 @@ fn query_activity_with_author_filter() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -145,23 +147,11 @@ fn query_activity_with_author_filter() {
     );
 
     // Filter by existing author
-    let entries = query_activity(
-        &catalog,
-        &config,
-        "1 year ago",
-        None,
-        Some("Test User"),
-    );
+    let entries = query_activity(&catalog, &config, "1 year ago", None, Some("Test User"));
     assert!(!entries.is_empty(), "should find commits by Test User");
 
     // Filter by non-existing author
-    let entries = query_activity(
-        &catalog,
-        &config,
-        "1 year ago",
-        None,
-        Some("Nobody"),
-    );
+    let entries = query_activity(&catalog, &config, "1 year ago", None, Some("Nobody"));
     assert!(entries.is_empty(), "should not find commits by Nobody");
 }
 
@@ -174,6 +164,7 @@ fn query_activity_empty_catalog() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let catalog = Catalog::default();

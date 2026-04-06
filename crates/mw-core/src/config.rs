@@ -10,6 +10,45 @@ struct ConfigFile {
     config: MakeworkConfig,
 }
 
+/// Configuration for the workspace resolver scoring weights.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ResolverConfig {
+    #[serde(default = "ResolverConfig::default_weight_fuzzy")]
+    pub weight_fuzzy: f64,
+    #[serde(default = "ResolverConfig::default_weight_frecency")]
+    pub weight_frecency: f64,
+    #[serde(default = "ResolverConfig::default_weight_activity")]
+    pub weight_activity: f64,
+    #[serde(default = "ResolverConfig::default_weight_context")]
+    pub weight_context: f64,
+}
+
+impl Default for ResolverConfig {
+    fn default() -> Self {
+        Self {
+            weight_fuzzy: 0.35,
+            weight_frecency: 0.35,
+            weight_activity: 0.15,
+            weight_context: 0.15,
+        }
+    }
+}
+
+impl ResolverConfig {
+    fn default_weight_fuzzy() -> f64 {
+        0.35
+    }
+    fn default_weight_frecency() -> f64 {
+        0.35
+    }
+    fn default_weight_activity() -> f64 {
+        0.15
+    }
+    fn default_weight_context() -> f64 {
+        0.15
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MakeworkConfig {
     pub worktree_root: PathBuf,
@@ -22,6 +61,8 @@ pub struct MakeworkConfig {
     pub sync_exclude: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template_dir: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolver: Option<ResolverConfig>,
 }
 
 #[derive(Debug)]
@@ -42,7 +83,7 @@ impl std::fmt::Display for ConfigError {
             ConfigError::HomeDirNotFound => write!(f, "could not determine home directory"),
             ConfigError::UnknownKey(key) => write!(
                 f,
-                "unknown config key: {key} (supported: worktree_root, bare_root, scan_roots, sync_max_depth, sync_exclude)"
+                "unknown config key: {key} (supported: worktree_root, bare_root, scan_roots, sync_max_depth, sync_exclude, resolver.weight_fuzzy, resolver.weight_frecency, resolver.weight_activity, resolver.weight_context)"
             ),
         }
     }
@@ -106,6 +147,7 @@ impl MakeworkConfig {
             sync_max_depth: None,
             sync_exclude: Vec::new(),
             template_dir: None,
+            resolver: None,
         })
     }
 
@@ -327,6 +369,7 @@ mod tests {
             sync_max_depth: None,
             sync_exclude: Vec::new(),
             template_dir: None,
+            resolver: None,
         };
         let file = ConfigFile {
             config: config.clone(),
@@ -368,6 +411,7 @@ bare_root = "~/.local/share/makework/repos"
             sync_max_depth: None,
             sync_exclude: Vec::new(),
             template_dir: None,
+            resolver: None,
         };
         let entries = config.config_show().unwrap();
         assert_eq!(entries.len(), 2);
@@ -406,6 +450,7 @@ bare_root = "~/.local/share/makework/repos"
             sync_max_depth: None,
             sync_exclude: Vec::new(),
             template_dir: None,
+            resolver: None,
         };
         let entries = config.config_show().unwrap();
         assert_eq!(entries.len(), 3);
@@ -422,6 +467,7 @@ bare_root = "~/.local/share/makework/repos"
             sync_max_depth: None,
             sync_exclude: Vec::new(),
             template_dir: None,
+            resolver: None,
         };
         let entries = config.config_show().unwrap();
         assert_eq!(entries.len(), 2);
@@ -436,6 +482,7 @@ bare_root = "~/.local/share/makework/repos"
             sync_max_depth: Some(3),
             sync_exclude: vec!["node_modules".to_string(), ".cache".to_string()],
             template_dir: Some(PathBuf::from("/home/user/templates")),
+            resolver: None,
         };
         let file = ConfigFile {
             config: config.clone(),

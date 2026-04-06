@@ -28,9 +28,21 @@ fn setup_repo_with_files(dir: &std::path::Path) {
         .unwrap();
 
     std::fs::create_dir_all(dir.join("src")).unwrap();
-    std::fs::write(dir.join("src/main.rs"), "fn main() {\n    println!(\"hello\");\n}\n").unwrap();
-    std::fs::write(dir.join("src/lib.rs"), "pub fn greet() {\n    println!(\"hello from lib\");\n}\n").unwrap();
-    std::fs::write(dir.join("README.md"), "# My Project\nThis is a test project.\n").unwrap();
+    std::fs::write(
+        dir.join("src/main.rs"),
+        "fn main() {\n    println!(\"hello\");\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("src/lib.rs"),
+        "pub fn greet() {\n    println!(\"hello from lib\");\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("README.md"),
+        "# My Project\nThis is a test project.\n",
+    )
+    .unwrap();
 
     Command::new("git")
         .args(["-C"])
@@ -81,6 +93,7 @@ fn search_all_finds_pattern_in_worktree() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -117,6 +130,7 @@ fn search_all_with_file_glob() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -140,7 +154,11 @@ fn search_all_with_file_glob() {
     let results = search_all(&catalog, &config, "println", &options);
     assert!(!results.is_empty(), "should find println in .rs files");
     for r in &results {
-        assert!(r.file_path.ends_with(".rs"), "all matches should be .rs files, got: {}", r.file_path);
+        assert!(
+            r.file_path.ends_with(".rs"),
+            "all matches should be .rs files, got: {}",
+            r.file_path
+        );
     }
 }
 
@@ -156,6 +174,7 @@ fn search_all_case_insensitive() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -196,6 +215,7 @@ fn search_all_max_results() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -236,6 +256,7 @@ fn search_all_no_match() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let mut catalog = Catalog::default();
@@ -269,6 +290,7 @@ fn search_all_empty_catalog() {
         sync_max_depth: None,
         sync_exclude: Vec::new(),
         template_dir: None,
+        resolver: None,
     };
 
     let catalog = Catalog::default();

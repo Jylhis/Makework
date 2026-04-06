@@ -87,8 +87,7 @@ fn list_branches_includes_default() {
     let bare = tmp.path().join("repo.git");
     mw_core::repository::clone_bare(source.to_str().unwrap(), &bare).unwrap();
 
-    let branches =
-        mw_core::repository::list_branches(&bare).expect("list_branches should succeed");
+    let branches = mw_core::repository::list_branches(&bare).expect("list_branches should succeed");
     assert!(
         branches.len() >= 2,
         "should have at least 2 branches, got: {branches:?}"

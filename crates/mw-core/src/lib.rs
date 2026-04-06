@@ -5,6 +5,7 @@ pub mod nix;
 pub mod project;
 pub mod query;
 pub mod repository;
+pub mod resolver;
 pub mod search;
 pub mod status;
 pub mod template;
