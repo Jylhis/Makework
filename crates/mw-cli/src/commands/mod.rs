@@ -24,13 +24,16 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Navigate to a project worktree
+    /// Navigate to a project worktree (supports fuzzy matching)
     Go {
-        /// Repository, project, or subproject name (interactive picker if omitted)
+        /// Project name, fuzzy query, or repo@branch (interactive picker if omitted)
         project: Option<String>,
         /// Branch, tag, or commit (defaults to main branch)
         #[arg(name = "ref")]
         ref_: Option<String>,
+        /// Show all matches with scores instead of navigating
+        #[arg(long)]
+        list: bool,
     },
     /// Create a new worktree
     New {
@@ -119,6 +122,22 @@ pub enum Command {
     },
     /// Start MCP (Model Context Protocol) server
     Mcp,
+    /// Resolver debugging tools
+    Resolver {
+        #[command(subcommand)]
+        action: ResolverAction,
+    },
+    /// Generate shell hook for visit tracking
+    Init {
+        /// Shell type (zsh, bash)
+        shell: String,
+    },
+    /// Record a visit (used by shell hook, not for direct use)
+    #[command(hide = true)]
+    Visit {
+        /// Current working directory path
+        path: String,
+    },
     /// Generate shell completions and wrapper
     Completions {
         /// Shell type (bash, zsh, fish)
@@ -174,6 +193,15 @@ pub enum MaintenanceAction {
 }
 
 #[derive(Subcommand)]
+pub enum ResolverAction {
+    /// Show per-signal scoring breakdown for a query
+    Explain {
+        /// The query to explain
+        query: String,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum ConfigAction {
     /// Display current settings
     Show,
@@ -186,6 +214,56 @@ pub enum ConfigAction {
     },
     /// Open config in $EDITOR
     Edit,
+}
+
+/// Print go result: path to stdout, nix info to stdout (for shell wrapper).
+fn print_go_result(result: &mw_core::worktree::GoResult) {
+    println!("{}", result.path.display());
+    if let Some(ref nix) = result.nix_activation {
+        println!("{}", nix.activation_command);
+        if let Some(ref dir) = result.nix_activation_dir {
+            println!("{}", dir.display());
+        }
+    }
+}
+
+/// Record a visit to the visits database (best-effort, never fails the caller).
+fn record_visit(_config: &mw_core::config::MakeworkConfig, repo: &str, branch: &str) {
+    let state_dir = match mw_core::config::MakeworkConfig::state_dir() {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    let visits_path = state_dir.join("visits.json");
+    let mut visits = mw_core::resolver::VisitsDb::load(&visits_path).unwrap_or_default();
+    let key = format!("{repo}:{branch}");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    visits.record_visit(&key, now);
+    let _ = visits.save(&visits_path);
+}
+
+/// Write repo-roots.txt cache for the shell hook fast-path.
+fn write_repo_roots_cache(
+    _config: &mw_core::config::MakeworkConfig,
+    catalog: &mw_core::catalog::Catalog,
+) {
+    let state_dir = match mw_core::config::MakeworkConfig::state_dir() {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    let _ = std::fs::create_dir_all(&state_dir);
+    let roots: Vec<String> = catalog
+        .repos
+        .values()
+        .map(|r| r.path.display().to_string())
+        .collect();
+    let path = state_dir.join("repo-roots.txt");
+    let tmp = state_dir.join("repo-roots.txt.tmp");
+    if std::fs::write(&tmp, roots.join("\n")).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
 }
 
 pub fn dispatch(cli: Cli) {
@@ -229,23 +307,16 @@ pub fn dispatch(cli: Cli) {
             }
         }
         Some(cmd) => match cmd {
-            Command::Go { project, ref_ } => {
-                let config = match mw_core::config::MakeworkConfig::load() {
-                    Ok(c) => c,
-                    Err(e) => {
-                        eprintln!("Error loading config: {e}");
-                        std::process::exit(1);
-                    }
-                };
-                let catalog = match mw_core::catalog::Catalog::load(&config) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        eprintln!("Error loading catalog: {e}");
-                        std::process::exit(1);
-                    }
-                };
+            Command::Go {
+                project,
+                ref_,
+                list,
+            } => {
+                let config = load_config();
+                let catalog = load_catalog(&config);
 
-                let project = match project {
+                // No project arg: interactive picker (Phase 14 behavior)
+                let query = match project {
                     Some(p) => p,
                     None => {
                         use std::io::IsTerminal;
@@ -255,7 +326,9 @@ pub fn dispatch(cli: Cli) {
                         }
                         let names = catalog.all_project_names();
                         if names.is_empty() {
-                            eprintln!("No projects registered. Use `mw catalog add` first.");
+                            eprintln!(
+                                "No projects registered. Run 'mw sync' or 'mw catalog add' first."
+                            );
                             std::process::exit(1);
                         }
                         eprintln!("Available projects:");
@@ -267,19 +340,116 @@ pub fn dispatch(cli: Cli) {
                     }
                 };
 
-                match mw_core::worktree::go(&catalog, &config, &project, ref_.as_deref()) {
-                    Ok(result) => {
-                        println!("{}", result.path.display());
-                        if let Some(ref nix) = result.nix_activation {
-                            println!("{}", nix.activation_command);
-                            if let Some(ref dir) = result.nix_activation_dir {
-                                println!("{}", dir.display());
-                            }
-                        }
-                    }
+                // Parse the query for @-syntax
+                let parsed = match mw_core::resolver::parse_query(&query) {
+                    Ok(p) => p,
                     Err(e) => {
                         eprintln!("Error: {e}");
                         std::process::exit(1);
+                    }
+                };
+
+                match parsed {
+                    mw_core::resolver::ParsedQuery::Explicit { repo, branch } => {
+                        // Explicit repo@branch: bypass fuzzy, go direct
+                        match mw_core::worktree::go(&catalog, &config, &repo, Some(&branch)) {
+                            Ok(result) => {
+                                // Record visit
+                                record_visit(&config, &repo, &branch);
+                                print_go_result(&result);
+                            }
+                            Err(e) => {
+                                eprintln!("Error: {e}");
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    mw_core::resolver::ParsedQuery::Fuzzy(q) => {
+                        // Try exact match first (backward compatible)
+                        if !list && let Ok(resolved) = catalog.find_project_unambiguous(&q) {
+                            let repo_name = resolved.repo.name.clone();
+                            let main_branch = resolved.repo.main_branch.clone();
+                            if let Ok(result) =
+                                mw_core::worktree::go(&catalog, &config, &q, ref_.as_deref())
+                            {
+                                let branch = ref_.as_deref().unwrap_or(&main_branch);
+                                record_visit(&config, &repo_name, branch);
+                                print_go_result(&result);
+                                return;
+                            }
+                        }
+
+                        // Fall through to fuzzy resolver
+                        let resolver_config = config.resolver.clone().unwrap_or_default();
+                        let targets = mw_core::resolver::build_targets(&catalog);
+                        let visits_path = mw_core::config::MakeworkConfig::state_dir()
+                            .unwrap_or_default()
+                            .join("visits.json");
+                        let visits =
+                            mw_core::resolver::VisitsDb::load(&visits_path).unwrap_or_default();
+                        let index = mw_core::resolver::ResolverIndex { targets, visits };
+                        let ctx = mw_core::resolver::ResolveContext::default();
+
+                        match mw_core::resolver::resolve(&q, &index, &resolver_config, &ctx) {
+                            Ok(results) => {
+                                if list {
+                                    // --list mode: show all matches with scores
+                                    for (i, t) in results.iter().enumerate().take(10) {
+                                        let branch = t.branch.as_deref().unwrap_or("-");
+                                        let project = t.project_name.as_deref().unwrap_or("");
+                                        eprintln!(
+                                            "  {}. {:<20} {:<15} {:.3}  {}",
+                                            i + 1,
+                                            t.repo_name,
+                                            branch,
+                                            t.score,
+                                            project
+                                        );
+                                    }
+                                    return;
+                                }
+
+                                // Check disambiguation
+                                if mw_core::resolver::needs_disambiguation(&results, 0.10) {
+                                    use std::io::IsTerminal;
+                                    if std::io::stdin().is_terminal() {
+                                        eprintln!("Multiple matches for '{q}':");
+                                        for (i, t) in results.iter().enumerate().take(5) {
+                                            let branch = t.branch.as_deref().unwrap_or("-");
+                                            eprintln!("  {}. {} ({})", i + 1, t.repo_name, branch);
+                                        }
+                                        eprintln!("Use repo@branch syntax for precise routing.");
+                                        std::process::exit(1);
+                                    }
+                                }
+
+                                let top = &results[0];
+                                // Route to top result using exact match
+                                match mw_core::worktree::go(
+                                    &catalog,
+                                    &config,
+                                    &top.repo_name,
+                                    top.branch.as_deref(),
+                                ) {
+                                    Ok(result) => {
+                                        record_visit(
+                                            &config,
+                                            &top.repo_name,
+                                            top.branch.as_deref().unwrap_or("main"),
+                                        );
+                                        print_go_result(&result);
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Error: {e}");
+                                        std::process::exit(1);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("Error: {e}");
+                                std::process::exit(1);
+                            }
+                        }
                     }
                 }
             }
@@ -476,6 +646,8 @@ pub fn dispatch(cli: Cli) {
                                 println!("  {name}");
                             }
                         }
+                        // Write resolver cache files
+                        write_repo_roots_cache(&config, &catalog);
                     }
                     Err(e) => {
                         eprintln!("Error: {e}");
@@ -846,6 +1018,144 @@ pub fn dispatch(cli: Cli) {
                     }
                 }
             },
+            Command::Resolver { action } => match action {
+                ResolverAction::Explain { query } => {
+                    let config = load_config();
+                    let catalog = load_catalog(&config);
+                    let resolver_config = config.resolver.clone().unwrap_or_default();
+                    let targets = mw_core::resolver::build_targets(&catalog);
+                    let visits_path = mw_core::config::MakeworkConfig::state_dir()
+                        .unwrap_or_default()
+                        .join("visits.json");
+                    let visits =
+                        mw_core::resolver::VisitsDb::load(&visits_path).unwrap_or_default();
+                    let index = mw_core::resolver::ResolverIndex { targets, visits };
+                    let ctx = mw_core::resolver::ResolveContext::default();
+
+                    match mw_core::resolver::resolve(&query, &index, &resolver_config, &ctx) {
+                        Ok(results) => {
+                            println!("Query: '{query}'");
+                            println!(
+                                "Weights: fuzzy={:.2} frecency={:.2} activity={:.2} context={:.2}",
+                                resolver_config.weight_fuzzy,
+                                resolver_config.weight_frecency,
+                                resolver_config.weight_activity,
+                                resolver_config.weight_context,
+                            );
+                            println!();
+                            println!(
+                                "{:<20} {:<12} {:>6} {:>6} {:>6} {:>6} {:>8}",
+                                "REPO", "BRANCH", "FUZZY", "FREC", "ACT", "CTX", "TOTAL"
+                            );
+                            for t in results.iter().take(10) {
+                                let branch = t.branch.as_deref().unwrap_or("-");
+                                println!(
+                                    "{:<20} {:<12} {:>6.3} {:>6.3} {:>6.3} {:>6.3} {:>8.3}",
+                                    t.repo_name,
+                                    branch,
+                                    t.signal_scores.fuzzy,
+                                    t.signal_scores.frecency,
+                                    t.signal_scores.activity,
+                                    t.signal_scores.context,
+                                    t.score,
+                                );
+                            }
+                            let disamb = mw_core::resolver::needs_disambiguation(&results, 0.10);
+                            if disamb {
+                                println!("\nDisambiguation: TRIGGERED (top scores within 10%)");
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Error: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            },
+            Command::Init { shell } => match shell.as_str() {
+                "zsh" => {
+                    println!(
+                        r#"# Add to your .zshrc:
+_makework_hook() {{
+  command mw visit "$PWD" 2>/dev/null &!
+}}
+chpwd_functions+=(_makework_hook)"#
+                    );
+                }
+                "bash" => {
+                    println!(
+                        r#"# Add to your .bashrc:
+_makework_hook() {{
+  command mw visit "$PWD" 2>/dev/null &
+}}
+PROMPT_COMMAND="_makework_hook;${{PROMPT_COMMAND}}""#
+                    );
+                }
+                _ => {
+                    eprintln!("Unsupported shell: {shell}. Supported: zsh, bash");
+                    std::process::exit(1);
+                }
+            },
+            Command::Visit { path } => {
+                // Fast-path: read repo-roots.txt, check if path is inside a known repo
+                let state_dir = match mw_core::config::MakeworkConfig::state_dir() {
+                    Ok(d) => d,
+                    Err(_) => return, // silent no-op
+                };
+                let roots_path = state_dir.join("repo-roots.txt");
+                let roots = match std::fs::read_to_string(&roots_path) {
+                    Ok(content) => content,
+                    Err(_) => return, // silent no-op if file missing
+                };
+
+                let visit_path = std::path::Path::new(&path);
+                let mut matched_root: Option<&str> = None;
+                for root in roots.lines() {
+                    if !root.is_empty() && visit_path.starts_with(root) {
+                        matched_root = Some(root);
+                        break;
+                    }
+                }
+
+                let root = match matched_root {
+                    Some(r) => r,
+                    None => return, // not inside a known repo
+                };
+
+                // Get repo name from the root path (last component)
+                let repo_name = std::path::Path::new(root)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
+
+                // Get current branch via git rev-parse
+                let branch = std::process::Command::new("git")
+                    .args(["-C", &path, "rev-parse", "--abbrev-ref", "HEAD"])
+                    .output()
+                    .ok()
+                    .and_then(|o| {
+                        if o.status.success() {
+                            String::from_utf8(o.stdout)
+                                .ok()
+                                .map(|s| s.trim().to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                // Record the visit
+                let visits_path = state_dir.join("visits.json");
+                let mut visits =
+                    mw_core::resolver::VisitsDb::load(&visits_path).unwrap_or_default();
+                let key = format!("{repo_name}:{branch}");
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                visits.record_visit(&key, now);
+                let _ = visits.save(&visits_path);
+            }
             Command::Mcp => {
                 mw_mcp::server::run_stdio();
             }
