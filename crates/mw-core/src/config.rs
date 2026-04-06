@@ -83,7 +83,7 @@ impl std::fmt::Display for ConfigError {
             ConfigError::HomeDirNotFound => write!(f, "could not determine home directory"),
             ConfigError::UnknownKey(key) => write!(
                 f,
-                "unknown config key: {key} (supported: worktree_root, bare_root, scan_roots, sync_max_depth, sync_exclude, resolver.weight_fuzzy, resolver.weight_frecency, resolver.weight_activity, resolver.weight_context)"
+                "unknown config key: {key} (supported: worktree_root, bare_root, scan_roots, sync_max_depth, sync_exclude, template_dir)"
             ),
         }
     }
