@@ -92,7 +92,7 @@ in
     cargo check --workspace --all-targets
 
     echo "6/7: workspace formatting is clean"
-    cargo fmt --all --check
+    treefmt --check
 
     echo "7/7: DEVENV_ROOT is exported and points at this repo"
     test -n "''${DEVENV_ROOT:-}"
