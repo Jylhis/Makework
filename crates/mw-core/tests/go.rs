@@ -1,41 +1,11 @@
 use std::process::Command;
 
+mod common;
+use common::setup_temp_git_repo;
+
 use mw_core::catalog::Catalog;
 use mw_core::config::MakeworkConfig;
 use mw_core::worktree::go;
-
-fn setup_temp_git_repo(dir: &std::path::Path) {
-    Command::new("git")
-        .args(["init"])
-        .arg(dir)
-        .output()
-        .expect("git init failed");
-    Command::new("git")
-        .args(["-C"])
-        .arg(dir)
-        .args(["config", "user.email", "test@test.com"])
-        .output()
-        .expect("git config failed");
-    Command::new("git")
-        .args(["-C"])
-        .arg(dir)
-        .args(["config", "user.name", "Test"])
-        .output()
-        .expect("git config failed");
-    std::fs::write(dir.join("README.md"), "# Test\n").expect("write failed");
-    Command::new("git")
-        .args(["-C"])
-        .arg(dir)
-        .args(["add", "."])
-        .output()
-        .expect("git add failed");
-    Command::new("git")
-        .args(["-C"])
-        .arg(dir)
-        .args(["commit", "-m", "initial"])
-        .output()
-        .expect("git commit failed");
-}
 
 #[test]
 fn go_default_branch_returns_existing_path() {

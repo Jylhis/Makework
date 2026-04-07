@@ -1,37 +1,5 @@
-use std::process::Command;
-
-fn setup_temp_git_repo(dir: &std::path::Path) {
-    Command::new("git")
-        .args(["init"])
-        .arg(dir)
-        .output()
-        .expect("git init failed");
-    Command::new("git")
-        .args(["-C"])
-        .arg(dir)
-        .args(["config", "user.email", "test@test.com"])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .args(["-C"])
-        .arg(dir)
-        .args(["config", "user.name", "Test"])
-        .output()
-        .unwrap();
-    std::fs::write(dir.join("README.md"), "# Test\n").unwrap();
-    Command::new("git")
-        .args(["-C"])
-        .arg(dir)
-        .args(["add", "."])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .args(["-C"])
-        .arg(dir)
-        .args(["commit", "-m", "initial"])
-        .output()
-        .unwrap();
-}
+mod common;
+use common::setup_temp_git_repo;
 
 #[test]
 fn get_worktree_status_clean_repo() {

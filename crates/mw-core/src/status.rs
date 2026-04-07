@@ -198,11 +198,15 @@ mod tests {
         assert_eq!(deserialized.worktrees[1].dirty_count, 5);
     }
 
+    // Tests that mutate XDG_STATE_HOME share a mutex; cargo's parallel test
+    // runner would otherwise interleave their env-var changes.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn write_and_read_cache_round_trip() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let tmp = tempfile::tempdir().unwrap();
-        // Override XDG_STATE_HOME so cache goes into our temp dir
-        // SAFETY: test runs single-threaded for this env var
+        // SAFETY: ENV_LOCK serializes accesses across env-var-mutating tests.
         unsafe {
             std::env::set_var("XDG_STATE_HOME", tmp.path());
         }
@@ -234,8 +238,9 @@ mod tests {
 
     #[test]
     fn read_cache_nonexistent_returns_none() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
         let tmp = tempfile::tempdir().unwrap();
-        // SAFETY: test runs single-threaded for this env var
+        // SAFETY: ENV_LOCK serializes accesses across env-var-mutating tests.
         unsafe {
             std::env::set_var("XDG_STATE_HOME", tmp.path());
         }

@@ -77,7 +77,12 @@ fn create_and_list_worktree() {
 
     let non_bare: Vec<_> = worktrees.iter().filter(|wt| !wt.is_bare).collect();
     assert_eq!(non_bare.len(), 1, "should have exactly 1 non-bare worktree");
-    assert_eq!(non_bare[0].path, wt_path);
+    // Canonicalize both sides — on macOS, tempdir returns /var/... but git resolves
+    // it to /private/var/..., so the raw paths can't be compared directly.
+    assert_eq!(
+        non_bare[0].path.canonicalize().unwrap(),
+        wt_path.canonicalize().unwrap()
+    );
 }
 
 #[test]
