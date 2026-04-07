@@ -35,6 +35,14 @@ in
     inherit makework;
   };
 
+  # Binary caching via Cachix — pulls prebuilt artifacts from the
+  # `jylhis` cache. Pushing is opt-in via `devenv.local.nix` or by
+  # setting `CACHIX_AUTH_TOKEN` in CI; see devenv.sh/binary-caching.
+  cachix = {
+    enable = true;
+    pull = [ "jylhis" ];
+  };
+
   claude.code = {
     enable = true;
     mcpServers = {
@@ -56,5 +64,40 @@ in
 
   treefmt = {
     enable = true;
+    config.programs = {
+      nixfmt.enable = true;
+      rustfmt.enable = true;
+      taplo.enable = true;
+      yamlfmt.enable = true;
+    };
   };
+
+  # Tests that validate the dev environment. Run with `devenv test`.
+  enterTest = ''
+    set -euo pipefail
+
+    echo "1/7: cargo is available"
+    cargo --version
+
+    echo "2/7: rustc is available and reports a stable version"
+    rustc --version | grep -v nightly
+
+    echo "3/7: cargo-mutants is installed"
+    cargo mutants --version
+
+    echo "4/7: treefmt is available"
+    treefmt --version
+
+    echo "5/7: project type-checks via cargo check"
+    cargo check --workspace --all-targets
+
+    echo "6/7: workspace formatting is clean"
+    cargo fmt --all --check
+
+    echo "7/7: DEVENV_ROOT is exported and points at this repo"
+    test -n "''${DEVENV_ROOT:-}"
+    test -f "$DEVENV_ROOT/Cargo.toml"
+
+    echo "All 7 dev environment checks passed."
+  '';
 }
