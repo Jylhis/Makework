@@ -1,0 +1,70 @@
+---
+title: "Nix packaging"
+description: "Use Makework from a Nix flake or flake-parts module."
+keywords: ["nix", "flake", "flake-parts", "devenv", "packaging"]
+---
+
+Makework is built and shipped with Nix. The repository contains a `devenv.nix`
+that drives local development and a `nix/flake-parts-module.nix` you can
+import into your own flakes.
+
+## devenv.nix (development)
+
+Entering the dev shell gives you everything needed to build, test, and lint
+the workspace:
+
+```sh
+devenv shell
+```
+
+Inside the shell:
+
+```sh
+cargo build
+cargo test
+cargo clippy --all-targets -- -D warnings
+cargo mutants    # mutation testing
+```
+
+The shell also enables Claude Code's MCP server for devenv, so AI assistants
+can introspect the dev environment.
+
+## flake-parts module
+
+`nix/flake-parts-module.nix` exposes Makework as a per-system option you can
+use in your own flake:
+
+```nix
+{
+  inputs.makework.url = "github:Jylhis/Makework";
+
+  outputs = { self, nixpkgs, flake-parts, makework, ... }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      systems = [ "x86_64-linux" "aarch64-darwin" ];
+      imports = [ makework.flakeModules.default ];
+
+      perSystem = { ... }: {
+        makework = {
+          enable = true;
+          settings.worktree_root = "/data/worktrees";
+          settings.bare_root = "/data/repos";
+        };
+      };
+    };
+}
+```
+
+Setting `enable = true` adds the `mw` binary to the dev shell. The optional
+`settings` table is rendered into `config.toml`.
+
+## Building the binary directly
+
+If you only need the binary:
+
+```sh
+nix build .#makework
+./result/bin/mw --version
+```
+
+The package is defined via `crate2nix`, which converts the Cargo workspace
+into a pure Nix derivation tree. No internet access at build time.

@@ -1,0 +1,80 @@
+---
+title: "Worktrees"
+description: "How Makework creates, names, and removes git worktrees."
+keywords: ["worktree", "git", "branch", "checkout"]
+---
+
+A worktree is a checked-out copy of a branch tied to a single bare clone.
+Makework creates one per `(repo, ref)` pair on demand and reuses it on
+subsequent visits.
+
+## Where worktrees live
+
+By default they're rooted at `$XDG_DATA_HOME/makework/worktrees`. If the
+repository was added via URL, the path mirrors the URL host and segments;
+local-only repos use the repo name directly.
+
+```
+worktrees/
+├── github.com/Jylhis/Makework/main/
+├── github.com/Jylhis/Makework/feature-x/
+└── local-repo/main/
+```
+
+Branch names with `/` (`feature/auth`) are sanitized to `feature-auth` so the
+filesystem path stays flat.
+
+Override the root globally:
+
+```sh
+mw config set worktree_root ~/work/worktrees
+```
+
+## Creating worktrees
+
+`mw go` creates a worktree the first time you navigate to a `(repo, ref)`
+that doesn't exist yet. You can also create one explicitly:
+
+```sh
+mw new myrepo feature/billing
+```
+
+If `feature/billing` is a remote-tracking branch, the worktree starts on it.
+Otherwise the branch is created from the repository's default branch.
+
+## Listing and removing
+
+```sh
+mw ls                         # all active worktrees grouped by repo
+mw ls --prune                 # delete worktrees whose directory is gone
+mw rm myrepo/feature/billing  # remove a single worktree
+```
+
+`mw rm` calls `git worktree remove` under the hood. It refuses to delete
+worktrees with uncommitted changes unless you remove them by hand first.
+
+## Templates
+
+Set `template_dir` and Makework will copy its contents into every new
+worktree after creation. Useful for shared `.envrc`, editor configs, or
+local-only scripts.
+
+```sh
+mw config set template_dir ~/dotfiles/worktree-template
+```
+
+Existing files inside the worktree are never overwritten.
+
+## Sparse checkout
+
+For monorepos, declare `sparse_paths` on a subproject and Makework will run
+`git sparse-checkout init --cone` so only the relevant directories are
+populated. See [Subprojects](/concepts/subprojects).
+
+## Status overview
+
+`mw` (with no arguments) prints a status summary for every worktree:
+current branch, modified file count, ahead/behind counts, and orphan
+markers. The data is cached in
+`$XDG_STATE_HOME/makework/cache/<repo>.toml` so the overview stays cheap
+even with many repos.

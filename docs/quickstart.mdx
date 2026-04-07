@@ -1,0 +1,134 @@
+---
+title: "Quickstart"
+description: "Register your first repository, navigate worktrees, and enable shell integration in five minutes."
+keywords: ["getting started", "tutorial", "setup"]
+---
+
+This walkthrough takes you from a fresh install to a working setup with shell
+integration. It assumes you already have `mw` on your `PATH` — see
+[installation](/installation) if not.
+
+## Initialize Makework
+
+<Steps>
+  <Step title="Create the state directories">
+    Makework stores config in `$XDG_CONFIG_HOME/makework` and bare clones in
+    `$XDG_DATA_HOME/makework`. The `init` command creates them.
+
+    ```sh
+    mw catalog init
+    ```
+  </Step>
+
+  <Step title="Register a repository">
+    Point Makework at any local git repository. It clones a bare copy under
+    `bare_root` and records metadata in the catalog.
+
+    ```sh
+    mw catalog add ~/Developer/my-project
+    ```
+
+    Or register a remote URL — Makework will clone it for you:
+
+    ```sh
+    mw catalog add https://github.com/owner/repo
+    ```
+  </Step>
+
+  <Step title="Bulk-discover repos (optional)">
+    If you keep your projects in a few standard directories, point Makework at
+    them and run `sync` to register everything at once.
+
+    ```sh
+    mw config set scan_roots ~/Developer
+    mw sync
+    ```
+  </Step>
+</Steps>
+
+## Navigate to a worktree
+
+```sh
+mw go my-project
+```
+
+The first call creates a worktree on the default branch and prints its path.
+Subsequent calls reuse the same worktree.
+
+To check out a different ref, append `@<branch>`:
+
+```sh
+mw go my-project@feature/new-ui
+```
+
+If `feature/new-ui` is a remote branch, Makework creates a tracking worktree.
+If it doesn't exist yet, it's created from the default branch.
+
+<Tip>
+  Without a project name, `mw go` lists every navigable project. Pipe through
+  `fzf` for an interactive picker.
+</Tip>
+
+## Enable shell integration
+
+`mw go` only prints the target path — it can't change your shell's working
+directory by itself. Source the wrapper to make it actually `cd`.
+
+<Tabs>
+  <Tab title="bash">
+    ```sh
+    eval "$(mw completions bash)"
+    ```
+  </Tab>
+  <Tab title="zsh">
+    ```sh
+    eval "$(mw completions zsh)"
+    ```
+  </Tab>
+  <Tab title="fish">
+    ```fish
+    mw completions fish | source
+    ```
+  </Tab>
+</Tabs>
+
+Add the same line to your `.bashrc`, `.zshrc`, or `config.fish` to make it
+permanent.
+
+## Track your visits (optional)
+
+Makework's resolver gets smarter when it knows where you actually spend time.
+Install the visit hook so every `cd` is recorded.
+
+<Tabs>
+  <Tab title="bash">
+    ```sh
+    mw init bash >> ~/.bashrc
+    ```
+  </Tab>
+  <Tab title="zsh">
+    ```sh
+    mw init zsh >> ~/.zshrc
+    ```
+  </Tab>
+</Tabs>
+
+After a few days of use, `mw go new` will rank your `new-billing-service`
+above an unrelated `new-ui-prototype` because you visit the former more often.
+
+## What next
+
+<Columns cols={2}>
+  <Card title="CLI reference" icon="terminal" href="/cli/reference">
+    Every subcommand and flag.
+  </Card>
+  <Card title="How the resolver works" icon="brain" href="/concepts/resolver">
+    Understand how queries get scored.
+  </Card>
+  <Card title="Configure Nix activation" icon="box" href="/concepts/nix">
+    Auto-enter `flake.nix`, `devenv`, or `direnv` shells.
+  </Card>
+  <Card title="Set up MCP for AI" icon="bot" href="/integrations/mcp">
+    Let Claude Code navigate your repos.
+  </Card>
+</Columns>

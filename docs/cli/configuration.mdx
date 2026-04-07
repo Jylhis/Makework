@@ -1,0 +1,133 @@
+---
+title: "Configuration"
+description: "Settings, file locations, and the per-project .makework.toml schema."
+keywords: ["config", "settings", "toml", "xdg", "makework.toml"]
+---
+
+Makework reads configuration from three places:
+
+1. **`$XDG_CONFIG_HOME/makework/config.toml`** — global settings.
+2. **`$XDG_CONFIG_HOME/makework/catalog.toml`** — registered repositories.
+3. **`<repo>/.makework.toml`** — per-project overrides committed to the repo.
+
+All three are TOML.
+
+## Global config (`config.toml`)
+
+```toml
+[config]
+worktree_root = "~/.local/share/makework/worktrees"
+bare_root = "~/.local/share/makework/repos"
+scan_roots = ["~/Developer", "~/work"]
+sync_max_depth = 2
+sync_exclude = ["node_modules", "target", ".cache"]
+template_dir = "~/dotfiles/worktree-template"
+
+[config.resolver]
+weight_fuzzy = 0.35
+weight_frecency = 0.35
+weight_activity = 0.15
+weight_context = 0.15
+```
+
+| Key              | Type            | Default                                            | Purpose                                            |
+|------------------|-----------------|----------------------------------------------------|----------------------------------------------------|
+| `worktree_root`  | path            | `$XDG_DATA_HOME/makework/worktrees`                | Where worktrees are created                        |
+| `bare_root`      | path            | `$XDG_DATA_HOME/makework/repos`                    | Where bare clones are stored                       |
+| `scan_roots`     | array of paths  | empty                                              | Directories `mw sync` walks for repos              |
+| `sync_max_depth` | integer         | `1`                                                | Max recursion depth for `mw sync`                  |
+| `sync_exclude`   | array of strings| empty                                              | Directory names skipped during scan                |
+| `template_dir`   | path            | none                                               | Files copied into every newly created worktree     |
+| `resolver.*`     | numbers         | see [Resolver](/concepts/resolver)                 | Per-signal weights for fuzzy navigation            |
+
+Tilde expansion (`~/...`) is applied at load time.
+
+### Setting values
+
+`mw config set` accepts every key listed above. Multi-value entries take a
+comma-separated list:
+
+```sh
+mw config set worktree_root ~/work/wts
+mw config set scan_roots ~/Developer,~/work
+mw config set sync_exclude node_modules,target,.cache
+mw config set sync_max_depth 3
+```
+
+Or run `mw config edit` to open the file in `$EDITOR`.
+
+## State files
+
+Makework writes runtime state under `$XDG_STATE_HOME/makework/`:
+
+| File                  | Purpose                                                |
+|-----------------------|--------------------------------------------------------|
+| `visits.json`         | Frecency database for the resolver                     |
+| `repo-roots.txt`      | Cached list of bare-clone paths for the shell hook     |
+| `cache/<repo>.toml`   | Per-repo status snapshots used by `mw`                 |
+
+These are safe to delete: Makework regenerates them on demand.
+
+## Per-project `.makework.toml`
+
+Drop this file at the root of any repository to override defaults and define
+subprojects.
+
+```toml
+main_branch = "develop"
+tags = ["work", "billing"]
+
+[nix]
+type = "devenv"
+path = "."
+
+[subprojects.api]
+subproject_path = "services/api"
+sparse_paths = ["services/api", "shared/proto"]
+
+[subprojects.api.nix]
+type = "flake"
+path = "services/api"
+devshell = "rust"
+```
+
+| Key                          | Type           | Purpose                                                  |
+|------------------------------|----------------|----------------------------------------------------------|
+| `main_branch`                | string         | Override the repo's default branch                       |
+| `tags`                       | array          | Free-form tags for grouping and filtering                |
+| `nix.type`                   | string         | `flake`, `shell`, `devenv`, or `direnv`                  |
+| `nix.path`                   | path           | Directory in which to run the activation command         |
+| `nix.devshell`               | string         | Named devshell for `nix develop .#<name>`                |
+| `subprojects.<id>`           | table          | One entry per subproject                                 |
+| `subprojects.<id>.subproject_path` | path     | Path within the repo (relative)                          |
+| `subprojects.<id>.sparse_paths`    | array    | Directories to populate via sparse-checkout              |
+| `subprojects.<id>.nix`             | table    | Nix config for the subproject (same shape as top-level)  |
+
+`mw project init` creates a starter file with all keys commented out.
+
+## Catalog file (`catalog.toml`)
+
+Maintained by `mw catalog *` and `mw sync`. Editing it by hand works, but
+prefer the CLI — name keys must match `[repos.<name>]` exactly.
+
+```toml
+[repos.makework]
+path = "/Users/me/.local/share/makework/repos/github.com/Jylhis/Makework"
+url = "https://github.com/Jylhis/Makework"
+main_branch = "main"
+
+[repos.makework.remotes.origin]
+url = "https://github.com/Jylhis/Makework"
+```
+
+## Environment variables
+
+Makework respects the standard XDG variables:
+
+- `XDG_CONFIG_HOME` (default: `~/.config`)
+- `XDG_DATA_HOME` (default: `~/.local/share`)
+- `XDG_STATE_HOME` (default: `~/.local/state`)
+- `EDITOR` (used by `mw config edit` and `mw catalog edit`)
+
+Set them before running `mw` to relocate the entire installation, e.g. for
+per-project sandboxes during testing.

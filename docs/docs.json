@@ -1,0 +1,65 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Makework",
+  "colors": {
+    "primary": "#2D7D6F",
+    "light": "#5BB3A1",
+    "dark": "#1A4D44"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guide",
+        "groups": [
+          {
+            "group": "Get started",
+            "pages": [
+              "index",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/catalog",
+              "concepts/worktrees",
+              "concepts/resolver",
+              "concepts/nix",
+              "concepts/subprojects"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/shell",
+              "integrations/emacs",
+              "integrations/mcp",
+              "integrations/nix"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI",
+        "groups": [
+          {
+            "group": "Reference",
+            "pages": [
+              "cli/reference",
+              "cli/configuration"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/Jylhis/Makework"
+    }
+  }
+}

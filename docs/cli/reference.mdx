@@ -1,0 +1,211 @@
+---
+title: "CLI reference"
+description: "Every Makework subcommand and flag."
+keywords: ["cli", "reference", "commands", "flags"]
+---
+
+This page documents every `mw` subcommand. Run `mw <command> --help` for the
+canonical, version-specific output.
+
+## Default action
+
+```sh
+mw
+```
+
+With no arguments, prints the status overview: every registered repo, its
+worktrees, current branch, dirty file count, and ahead/behind counts.
+
+## Navigation
+
+### `mw go`
+
+```sh
+mw go [PROJECT] [REF] [--list]
+```
+
+Navigate to a worktree, creating it if necessary. The shell wrapper handles
+the actual `cd` — see [shell integration](/integrations/shell).
+
+| Argument / flag | Description                                                |
+|-----------------|------------------------------------------------------------|
+| `PROJECT`       | Project name, fuzzy query, or `repo@branch`                |
+| `REF`           | Branch, tag, or commit (defaults to the repo's main branch) |
+| `--list`        | Print top 10 fuzzy matches with scores; do not navigate    |
+
+Without `PROJECT`, prints the list of available projects on stderr and exits.
+
+### `mw new`
+
+```sh
+mw new <project> <ref>
+```
+
+Create a worktree without navigating. Useful in scripts.
+
+### `mw rm`
+
+```sh
+mw rm <project>/<ref>
+```
+
+Remove a worktree. Refuses if the working tree has uncommitted changes.
+
+### `mw ls`
+
+```sh
+mw ls [--prune]
+```
+
+List active worktrees grouped by repository. With `--prune`, delete entries
+whose directory has been removed externally.
+
+## Repository management
+
+### `mw catalog`
+
+```sh
+mw catalog init               # create config + state directories
+mw catalog add <source>       # register a repo from local path or git URL
+mw catalog list               # list registered repos
+mw catalog remove <project>   # drop a catalog entry; keep files on disk
+mw catalog purge <project>    # delete bare clone, worktrees, and catalog entry
+mw catalog edit               # open catalog.toml in $EDITOR
+```
+
+### `mw sync`
+
+```sh
+mw sync [--depth N] [--exclude PATTERN]...
+```
+
+Walk every directory in `scan_roots` looking for git repositories. Newly
+discovered repos are registered automatically. Submodules and bare repos are
+skipped.
+
+| Flag             | Description                                              |
+|------------------|----------------------------------------------------------|
+| `--depth N`      | Maximum recursion depth (default: 1, configurable)       |
+| `--exclude PAT`  | Skip directories matching `PAT` (repeatable)             |
+
+### `mw fetch`
+
+```sh
+mw fetch [PROJECT]
+```
+
+Run `git fetch --all` against one repo or every registered repo. Warns when
+the upstream's default branch appears to have changed.
+
+## Search and query
+
+### `mw search` (alias `mw grep`)
+
+```sh
+mw search <pattern> [--glob GLOB] [-i] [--max N]
+```
+
+Run a grep across every registered worktree. Output is grouped by repo.
+
+| Flag             | Description                                              |
+|------------------|----------------------------------------------------------|
+| `--glob GLOB`    | File filter, e.g. `*.rs`                                 |
+| `-i`, `--ignore-case` | Case-insensitive search                             |
+| `--max N`        | Cap results per repository                               |
+
+### `mw query`
+
+```sh
+mw query [--since DATE] [--until DATE] [--author NAME] [--format short|full]
+```
+
+Show recent commit activity across every worktree. Defaults to the last 7
+days.
+
+| Flag             | Description                                              |
+|------------------|----------------------------------------------------------|
+| `--since DATE`   | Anything `git log --since` accepts (default `7 days ago`) |
+| `--until DATE`   | Upper bound on commit date                               |
+| `--author NAME`  | Filter by author name (default: git's `user.name`)       |
+| `--format`       | `short` (one line per commit) or `full`                  |
+
+## Configuration
+
+### `mw config`
+
+```sh
+mw config show              # display current settings
+mw config set <key> <value> # update one setting
+mw config edit              # open config.toml in $EDITOR
+```
+
+Supported keys: `worktree_root`, `bare_root`, `scan_roots`, `sync_max_depth`,
+`sync_exclude`, `template_dir`. See [configuration](/cli/configuration) for
+details.
+
+### `mw project`
+
+```sh
+mw project init             # create a .makework.toml template in CWD
+mw project show <project>   # print resolved configuration for a project
+```
+
+## Maintenance
+
+### `mw maintenance`
+
+```sh
+mw maintenance start        # register the current repo for git maintenance
+mw maintenance stop         # unregister
+mw maintenance status       # check registration
+```
+
+## Resolver debugging
+
+### `mw resolver explain`
+
+```sh
+mw resolver explain <query>
+```
+
+Show the per-signal scoring breakdown the resolver computed for `query`. See
+[Resolver](/concepts/resolver).
+
+## Shell integration
+
+### `mw init`
+
+```sh
+mw init <bash|zsh>
+```
+
+Print a shell hook that records visits on every `cd`.
+
+### `mw completions`
+
+```sh
+mw completions <bash|zsh|fish>
+```
+
+Print shell completions and the wrapper function that makes `mw go` actually
+change directory.
+
+### `mw visit` (hidden)
+
+```sh
+mw visit <path>
+```
+
+Record a frecency visit. Called by the shell hook installed via `mw init`;
+not intended for direct invocation.
+
+## AI integration
+
+### `mw mcp`
+
+```sh
+mw mcp
+```
+
+Start the Model Context Protocol server on stdio. See
+[MCP integration](/integrations/mcp).

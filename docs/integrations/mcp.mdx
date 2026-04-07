@@ -1,0 +1,80 @@
+---
+title: "MCP server"
+description: "Expose Makework to Claude Code and other AI assistants over the Model Context Protocol."
+keywords: ["mcp", "model context protocol", "claude", "ai", "json-rpc"]
+---
+
+The `mw-mcp` crate exposes the same operations as the CLI over the
+[Model Context Protocol](https://modelcontextprotocol.io/), so an AI agent
+can navigate your repos, register new ones, fetch updates, and read status —
+all through structured tool calls instead of shell parsing.
+
+## Start the server
+
+```sh
+mw mcp
+```
+
+That spawns a JSON-RPC server on stdio. It's intended to be launched by an
+MCP client (Claude Code, Continue, etc.), not run interactively.
+
+## Resources
+
+| URI                 | Contents                                              |
+|---------------------|-------------------------------------------------------|
+| `makework://catalog` | Every registered repo with metadata and subprojects |
+| `makework://status`  | Worktree overview: branch, dirty count, ahead/behind |
+
+Resources are read-only snapshots; clients fetch them with
+`resources/read`.
+
+## Tools
+
+| Tool         | Arguments                          | Returns                              |
+|--------------|------------------------------------|--------------------------------------|
+| `go`         | `project: string`, `ref?: string` | Worktree path and Nix activation     |
+| `sync`       | `depth?: int`                      | List of newly registered repos       |
+| `catalog_add`| `source: string`                   | Name of the registered repository    |
+| `fetch`      | `project?: string`                 | Per-repo success or error            |
+
+Errors come back as MCP error objects with a human-readable message.
+
+## Wire it into Claude Code
+
+Add an entry to your Claude Code MCP config (typically `~/.mcp.json` or
+`settings.json`):
+
+```json
+{
+  "mcpServers": {
+    "makework": {
+      "type": "stdio",
+      "command": "mw",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Restart Claude Code. The agent will discover the `go`, `sync`, `catalog_add`,
+and `fetch` tools, plus the two resources, and can call them with
+auto-generated argument schemas.
+
+## Example session
+
+```text
+> claude: which repos are registered?
+[reads makework://catalog]
+You have 7 repositories registered: ...
+
+> claude: navigate to the auth service
+[calls go(project: "auth-service")]
+Checked out main; activation: nix develop
+```
+
+## Adding new tools
+
+The server lives in `crates/mw-mcp/src/`. New tools go in
+`tools.rs` (handler) and are listed in `server.rs` (`tools/list`). Each
+handler is a small dispatcher into `mw-core`, so adding new functionality is
+typically a 30-line patch.

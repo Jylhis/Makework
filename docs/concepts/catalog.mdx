@@ -1,0 +1,90 @@
+---
+title: "Catalog"
+description: "The registry of repositories Makework knows about."
+keywords: ["catalog", "registry", "metadata", "sync"]
+---
+
+The catalog is the central registry of every repository Makework manages. It
+lives in `$XDG_CONFIG_HOME/makework/catalog.toml` and is created by
+`mw catalog init`.
+
+## What's in it
+
+Each entry records the repository name, on-disk path (the bare clone),
+optional remote URL, default branch, named remotes, and any nested projects
+or subprojects.
+
+```toml
+[repos.makework]
+path = "/Users/me/.local/share/makework/repos/github.com/Jylhis/Makework"
+url = "https://github.com/Jylhis/Makework"
+main_branch = "main"
+
+[repos.makework.remotes.origin]
+url = "https://github.com/Jylhis/Makework"
+```
+
+## Adding repositories
+
+There are three ways to populate the catalog.
+
+<Steps>
+  <Step title="Single repo by path">
+    ```sh
+    mw catalog add ~/Developer/myrepo
+    ```
+
+    Makework runs `git clone --bare` into `bare_root` and writes the entry.
+    Your original working copy is left alone.
+  </Step>
+  <Step title="Single repo by URL">
+    ```sh
+    mw catalog add https://github.com/owner/repo
+    mw catalog add git@github.com:owner/repo.git
+    ```
+
+    HTTPS, SSH, and `git@` shortcuts are all parsed.
+  </Step>
+  <Step title="Bulk discovery">
+    Set `scan_roots` and run `mw sync`. Makework walks each scan root looking
+    for `.git` directories and registers anything it hasn't seen before.
+
+    ```sh
+    mw config set scan_roots ~/Developer,~/work
+    mw sync --depth 2 --exclude node_modules --exclude target
+    ```
+
+    Submodules and bare repos discovered inside scan roots are skipped.
+  </Step>
+</Steps>
+
+## Inspecting the catalog
+
+| Command                | What it shows                                |
+|------------------------|----------------------------------------------|
+| `mw catalog list`      | One row per repo with URL, branch, worktree count |
+| `mw project show <name>` | Resolved metadata for a single project     |
+| `mw catalog edit`      | Open `catalog.toml` in `$EDITOR`             |
+
+## Removing entries
+
+`mw catalog remove <name>` removes the catalog entry but leaves the bare clone
+and worktrees on disk — useful when you want to deregister a repo without
+losing data.
+
+`mw catalog purge <name>` deletes everything: catalog entry, bare clone, and
+all derived worktrees. Use with care.
+
+<Warning>
+  `purge` does not warn before deleting. Make sure you don't have unpushed
+  work in any worktree of the target repository.
+</Warning>
+
+## How it's used
+
+Every command that operates on multiple repos starts from the catalog:
+
+- `mw fetch` iterates `catalog.repos`.
+- `mw search` and `mw query` shell out into each registered worktree.
+- `mw go`'s fuzzy resolver scores results against catalog entries.
+- The MCP `catalog` resource serializes the same data over JSON-RPC.

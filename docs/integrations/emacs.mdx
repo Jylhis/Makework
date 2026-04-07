@@ -1,0 +1,55 @@
+---
+title: "Emacs"
+description: "Use Makework from inside Emacs with the makework.el package."
+keywords: ["emacs", "elisp", "integration", "project.el"]
+---
+
+`editors/emacs/makework.el` ships an Emacs Lisp package that wraps the `mw`
+binary so you can navigate, sync, fetch, and view status without leaving your
+editor.
+
+## Install
+
+The package is a single file. Add it to your `load-path` and require it:
+
+```elisp
+(add-to-list 'load-path "~/path/to/Makework/editors/emacs")
+(require 'makework)
+```
+
+If you use `straight.el` or `use-package`, point at the local directory:
+
+```elisp
+(use-package makework
+  :load-path "~/path/to/Makework/editors/emacs"
+  :commands (makework-go makework-status makework-sync makework-fetch))
+```
+
+## Commands
+
+| Command            | What it does                                              |
+|--------------------|-----------------------------------------------------------|
+| `M-x makework-go`     | `completing-read` over project names; `cd` and activate Nix |
+| `M-x makework-status` | Run `mw` and display the overview in a read-only buffer  |
+| `M-x makework-sync`   | Run `mw sync`; report newly registered repos             |
+| `M-x makework-fetch`  | Run `mw fetch` in a compilation buffer                   |
+
+## Configuration
+
+```elisp
+(setq makework-binary "/usr/local/bin/mw"   ;; defaults to "mw" on PATH
+      makework-use-nix t)                    ;; auto-activate Nix on go
+```
+
+When `makework-use-nix` is non-nil and the worktree has a `flake.nix`,
+`devenv.nix`, or `.envrc`, the activation command is run via
+`shell-command` after `cd`.
+
+## Tests
+
+The package ships with an ERT suite at `editors/emacs/makework-test.el`. Run
+it with:
+
+```sh
+emacs -batch -L editors/emacs -l makework-test.el -f ert-run-tests-batch-and-exit
+```

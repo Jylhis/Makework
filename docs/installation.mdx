@@ -1,0 +1,75 @@
+---
+title: "Installation"
+description: "Build and install the Makework CLI from source using devenv or stock cargo."
+keywords: ["install", "setup", "devenv", "cargo", "nix"]
+---
+
+Makework is a Rust workspace targeting edition 2024. You can build it with
+[devenv](https://devenv.sh) (recommended) or with a stock stable toolchain.
+
+## With devenv
+
+`devenv.nix` is checked in and pins the Rust toolchain plus dev tooling
+(`cargo-mutants`, `treefmt`, pre-commit hooks).
+
+<Steps>
+  <Step title="Enter the dev shell">
+    ```sh
+    devenv shell
+    ```
+  </Step>
+  <Step title="Build and install the binary">
+    ```sh
+    cargo install --path crates/mw-cli
+    ```
+
+    The binary is named `mw`. Confirm it's on your `PATH`:
+
+    ```sh
+    mw --version
+    ```
+  </Step>
+</Steps>
+
+## With cargo only
+
+If you'd rather use your existing Rust toolchain, install stable Rust 1.85+
+(needed for edition 2024) and run:
+
+```sh
+cargo install --path crates/mw-cli
+```
+
+## Verify the install
+
+```sh
+mw catalog init
+mw config show
+```
+
+You should see the worktree and bare-clone roots resolved to absolute paths
+under `$XDG_DATA_HOME/makework`.
+
+## Optional dependencies
+
+<Info>
+  These tools are not required, but unlock additional features when present.
+</Info>
+
+| Tool        | Used by                            | Purpose                                |
+|-------------|------------------------------------|----------------------------------------|
+| `git` 2.5+  | every command                       | Worktree, fetch, log, sparse-checkout  |
+| `ripgrep`   | `mw search`                         | Faster cross-project search            |
+| `direnv`    | nix detection (`.envrc`)            | Auto-loading per-project shells        |
+| `devenv`    | nix detection (`devenv.nix`)        | Activating devenv environments         |
+| Nix         | nix detection (`flake.nix`)         | Activating flake-based devshells       |
+
+## Uninstall
+
+```sh
+cargo uninstall mw-cli
+rm -rf ~/.config/makework ~/.local/share/makework ~/.local/state/makework
+```
+
+The last command removes the catalog, bare clones, worktrees, and state cache.
+Your source code in `scan_roots` is left untouched.

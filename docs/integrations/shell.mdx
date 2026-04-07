@@ -1,0 +1,98 @@
+---
+title: "Shell integration"
+description: "Wrappers and visit hooks for bash, zsh, and fish."
+keywords: ["shell", "bash", "zsh", "fish", "wrapper", "completions"]
+---
+
+`mw go` itself only prints the target directory and any Nix activation
+command — a child process can't change its parent shell's working directory.
+The shell wrapper closes that gap.
+
+## Source the wrapper
+
+`mw completions <shell>` emits a function named `mw` that runs the binary,
+parses its output, and `cd`s into the printed path.
+
+<Tabs>
+  <Tab title="bash">
+    ```sh
+    eval "$(mw completions bash)"
+    ```
+
+    Add the same line to `~/.bashrc`.
+  </Tab>
+  <Tab title="zsh">
+    ```sh
+    eval "$(mw completions zsh)"
+    ```
+
+    Add the same line to `~/.zshrc`.
+  </Tab>
+  <Tab title="fish">
+    ```fish
+    mw completions fish | source
+    ```
+
+    Persist with `mw completions fish > ~/.config/fish/functions/mw.fish`.
+  </Tab>
+</Tabs>
+
+The wrapper also installs static completions, so `mw <Tab>` enumerates
+subcommands.
+
+## How the wrapper works
+
+`mw go` prints up to three lines:
+
+```
+/path/to/worktree
+nix develop -c $SHELL    # optional
+/path/to/subproject       # optional
+```
+
+The wrapper reads them with `sed -n '1p'`, `2p`, `3p`, then runs:
+
+1. `cd <line 1>`
+2. If line 2 is non-empty, `cd <line 3 or line 1>` and `eval <line 2>`
+
+Because the wrapper only intercepts `mw go`, every other subcommand prints
+output verbatim.
+
+## Visit hook (frecency)
+
+The resolver gets smarter when it sees every directory change, not just calls
+to `mw go`. `mw init <shell>` emits a `chpwd` hook for zsh or a
+`PROMPT_COMMAND` snippet for bash.
+
+<Tabs>
+  <Tab title="bash">
+    ```sh
+    mw init bash >> ~/.bashrc
+    ```
+  </Tab>
+  <Tab title="zsh">
+    ```sh
+    mw init zsh >> ~/.zshrc
+    ```
+  </Tab>
+</Tabs>
+
+The hook calls `mw visit "$PWD"` in the background. That command:
+
+1. Reads `$XDG_STATE_HOME/makework/repo-roots.txt` (a cached list of bare-clone
+   paths, refreshed by `mw sync` and `mw catalog add`).
+2. Returns immediately if the current directory isn't inside a known repo.
+3. Otherwise records a frecency visit keyed by `<repo>:<branch>`.
+
+The fast-path is intentionally simple — it does no TOML parsing and no shell
+fork beyond `git rev-parse` for the branch name, so the hook adds milliseconds
+at most to your `cd`.
+
+## Disabling integration temporarily
+
+`command mw <args>` bypasses the shell function and prints raw output. Useful
+for scripting or when you want the path without the side effect.
+
+```sh
+worktree=$(command mw go myrepo | head -1)
+```

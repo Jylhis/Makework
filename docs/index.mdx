@@ -1,0 +1,50 @@
+---
+title: "Makework"
+description: "A git worktree manager with fuzzy navigation, monorepo support, and Nix auto-activation."
+keywords: ["git", "worktree", "rust", "nix", "devenv", "monorepo"]
+---
+
+Makework is a command-line tool for developers who juggle many repositories
+and branches. It clones each repository once as a bare repo, then creates one
+worktree per branch you check out — so switching between projects never
+disturbs work in progress.
+
+## What you get
+
+<Columns cols={2}>
+  <Card title="Fuzzy navigation" icon="compass" href="/concepts/resolver">
+    `mw go <query>` ranks projects by name match, recent visits, and current
+    directory — like zoxide for repos.
+  </Card>
+  <Card title="Bare clone + worktree split" icon="git-branch" href="/concepts/worktrees">
+    One bare clone, many checked-out branches. Switch contexts without
+    stashing or losing build artifacts.
+  </Card>
+  <Card title="Nix auto-activation" icon="box" href="/concepts/nix">
+    Detects `flake.nix`, `devenv.nix`, `shell.nix`, or `.envrc` and runs the
+    right environment after every `cd`.
+  </Card>
+  <Card title="Monorepo aware" icon="folder-tree" href="/concepts/subprojects">
+    Per-project `.makework.toml` defines subprojects, sparse-checkout paths,
+    and tags.
+  </Card>
+  <Card title="Cross-project ops" icon="search" href="/cli/reference">
+    Search, query activity, and fetch updates across every registered
+    repository in one command.
+  </Card>
+  <Card title="Editor + AI integration" icon="puzzle" href="/integrations/mcp">
+    Shell wrappers, an Emacs package, and an MCP server for Claude Code and
+    other AI assistants.
+  </Card>
+</Columns>
+
+## Try it
+
+```sh
+mw catalog add ~/Developer/myrepo  # register a repo
+mw go myrepo                       # cd into a worktree
+mw go feat@new-ui                  # fuzzy match + branch routing
+mw                                 # status across all worktrees
+```
+
+Continue to the [quickstart](/quickstart) for the full walkthrough.

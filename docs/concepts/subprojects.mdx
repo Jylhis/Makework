@@ -1,0 +1,89 @@
+---
+title: "Subprojects"
+description: "Working with monorepos via .makework.toml subproject definitions and sparse-checkout."
+keywords: ["monorepo", "subproject", "sparse-checkout", "makework.toml"]
+---
+
+A subproject is a logical project that lives inside a larger repository.
+Makework lets you navigate, build, and grep them as if they were standalone
+repos, while still sharing one bare clone and one set of git history.
+
+## Defining subprojects
+
+Drop a `.makework.toml` at the root of your repository:
+
+```toml
+# .makework.toml
+main_branch = "main"
+tags = ["work"]
+
+[subprojects.api]
+subproject_path = "services/api"
+sparse_paths = ["services/api", "shared/proto"]
+
+[subprojects.api.nix]
+type = "devenv"
+path = "services/api"
+
+[subprojects.web]
+subproject_path = "apps/web"
+
+[subprojects.web.nix]
+type = "flake"
+path = "apps/web"
+devshell = "node"
+```
+
+Commit it. Anyone with `mw` installed will pick up the subprojects after
+running `mw catalog add` or `mw sync`.
+
+## Navigating to a subproject
+
+Subprojects are discoverable by name through the resolver. From any worktree:
+
+```sh
+mw go api    # routes to services/api in the parent monorepo
+mw go web    # routes to apps/web
+```
+
+Two subprojects with the same name across different repos are deduplicated by
+the resolver and disambiguated using the score breakdown.
+
+## Sparse checkout
+
+For very large monorepos, populating the entire tree on every worktree wastes
+disk and slows down git operations. Set `sparse_paths` and Makework will run
+`git sparse-checkout init --cone` then `git sparse-checkout set <paths...>`
+on the worktree.
+
+```toml
+[subprojects.api]
+subproject_path = "services/api"
+sparse_paths = ["services/api", "shared/lib", "shared/proto"]
+```
+
+Only the listed directories appear in your worktree. Switching to a different
+subproject in the same repo creates a separate worktree with its own sparse
+configuration.
+
+<Note>
+  Sparse checkout requires git 2.25 or newer.
+</Note>
+
+## Per-subproject Nix
+
+Each subproject can declare its own `[nix]` table. The activation command runs
+in the subproject's directory, not the repo root, so a `devenv.nix` next to
+the service code activates correctly.
+
+If you omit the `[nix]` table, Makework falls back to the repository-wide
+detection rules described in [Nix activation](/concepts/nix).
+
+## Inspecting a subproject
+
+```sh
+mw project show api
+```
+
+prints the resolved configuration: subproject path, sparse paths, Nix
+activation command, and any inherited tags.

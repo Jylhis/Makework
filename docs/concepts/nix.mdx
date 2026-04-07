@@ -1,0 +1,79 @@
+---
+title: "Nix activation"
+description: "How Makework detects flake.nix, devenv.nix, shell.nix, and .envrc and activates them after navigation."
+keywords: ["nix", "devenv", "flake", "direnv", "shell.nix"]
+---
+
+When you navigate to a worktree that contains a Nix or direnv configuration,
+Makework prints a second line of output: the activation command. The shell
+wrapper (`mw completions <shell>`) `eval`s that command, dropping you straight
+into the project's environment.
+
+## Detection order
+
+Makework checks the worktree (and the subproject directory, if any) in this
+order and stops at the first match:
+
+<Steps>
+  <Step title="Explicit override in .makework.toml">
+    A `[nix]` table on the project or subproject takes precedence. See
+    [project configuration](/cli/configuration#per-project-makework-toml).
+  </Step>
+  <Step title="flake.nix">
+    Activated with `nix develop`. If a `devshell` is named in the project
+    config, it becomes `nix develop .#<devshell>`.
+  </Step>
+  <Step title="shell.nix">
+    Activated with `nix-shell`.
+  </Step>
+  <Step title="devenv.nix">
+    Activated with `devenv shell`.
+  </Step>
+  <Step title=".envrc">
+    Inspected for `use flake`, `use nix`, or `use devenv` directives. If one
+    is present, the corresponding command is used.
+  </Step>
+</Steps>
+
+If none of the above match, no activation is printed and you stay in your
+parent shell environment.
+
+## Disabling activation
+
+Pipe through `cd` directly instead of the wrapper if you want the path
+without the side-effect:
+
+```sh
+cd "$(command mw go myrepo | head -1)"
+```
+
+`command mw` bypasses the shell function defined by the wrapper, so only the
+first line (the path) is consumed.
+
+## Subproject activation
+
+For monorepos, the activation command runs in the subproject's directory, not
+the worktree root. This means a `services/api/devenv.nix` activates correctly
+even though the bare clone lives at the repository root.
+
+```toml
+# .makework.toml
+[subprojects.api]
+subproject_path = "services/api"
+
+[subprojects.api.nix]
+type = "devenv"
+path = "services/api"
+```
+
+## Troubleshooting
+
+| Symptom                                                | Cause                                                 |
+|--------------------------------------------------------|-------------------------------------------------------|
+| Wrapper navigates but doesn't activate                 | No matching file found in the worktree or subproject  |
+| Activation runs but in the wrong directory             | Missing `path` in the explicit `[nix]` config         |
+| `direnv: error .envrc is blocked`                      | Run `direnv allow` once inside the worktree           |
+| Wrong devshell selected for a flake                    | Set `devshell` in `[nix]` to the explicit attribute   |
+
+`mw project show <name>` prints the resolved Nix configuration so you can
+verify what Makework will run before navigating.
