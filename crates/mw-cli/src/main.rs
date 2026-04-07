@@ -1,7 +1,5 @@
-mod commands;
-
 use clap::Parser;
-use commands::Cli;
+use mw_cli::commands::{self, Cli};
 
 fn main() {
     let cli = Cli::parse();

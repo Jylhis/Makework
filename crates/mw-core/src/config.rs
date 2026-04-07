@@ -23,29 +23,34 @@ pub struct ResolverConfig {
     pub weight_context: f64,
 }
 
-impl Default for ResolverConfig {
-    fn default() -> Self {
-        Self {
-            weight_fuzzy: 0.35,
-            weight_frecency: 0.35,
-            weight_activity: 0.15,
-            weight_context: 0.15,
-        }
+impl ResolverConfig {
+    const DEFAULT_WEIGHT_FUZZY: f64 = 0.35;
+    const DEFAULT_WEIGHT_FRECENCY: f64 = 0.35;
+    const DEFAULT_WEIGHT_ACTIVITY: f64 = 0.15;
+    const DEFAULT_WEIGHT_CONTEXT: f64 = 0.15;
+
+    fn default_weight_fuzzy() -> f64 {
+        Self::DEFAULT_WEIGHT_FUZZY
+    }
+    fn default_weight_frecency() -> f64 {
+        Self::DEFAULT_WEIGHT_FRECENCY
+    }
+    fn default_weight_activity() -> f64 {
+        Self::DEFAULT_WEIGHT_ACTIVITY
+    }
+    fn default_weight_context() -> f64 {
+        Self::DEFAULT_WEIGHT_CONTEXT
     }
 }
 
-impl ResolverConfig {
-    fn default_weight_fuzzy() -> f64 {
-        0.35
-    }
-    fn default_weight_frecency() -> f64 {
-        0.35
-    }
-    fn default_weight_activity() -> f64 {
-        0.15
-    }
-    fn default_weight_context() -> f64 {
-        0.15
+impl Default for ResolverConfig {
+    fn default() -> Self {
+        Self {
+            weight_fuzzy: Self::DEFAULT_WEIGHT_FUZZY,
+            weight_frecency: Self::DEFAULT_WEIGHT_FRECENCY,
+            weight_activity: Self::DEFAULT_WEIGHT_ACTIVITY,
+            weight_context: Self::DEFAULT_WEIGHT_CONTEXT,
+        }
     }
 }
 
@@ -258,7 +263,8 @@ impl MakeworkConfig {
 
     /// Set a single config key and persist the config file.
     ///
-    /// Supported keys: `"worktree_root"`, `"bare_root"`.
+    /// Supported keys: `worktree_root`, `bare_root`, `scan_roots`,
+    /// `sync_max_depth`, `sync_exclude`, `template_dir`.
     pub fn config_set(key: &str, value: &str) -> Result<(), ConfigError> {
         let mut config = Self::load()?;
 
