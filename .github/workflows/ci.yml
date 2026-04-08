@@ -9,6 +9,21 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  devenv:
+    name: devenv test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v16
+        with:
+          name: jylhis
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
+      - name: Run devenv tests
+        run: devenv test
+
   fmt:
     name: Format
     runs-on: ubuntu-latest
