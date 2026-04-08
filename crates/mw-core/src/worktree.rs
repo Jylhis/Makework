@@ -96,8 +96,7 @@ pub fn enable_sparse_checkout(worktree_path: &Path, paths: &[String]) -> Result<
     }
 
     let mut args = vec!["sparse-checkout", "set"];
-    let path_refs: Vec<&str> = paths.iter().map(|s| s.as_str()).collect();
-    args.extend(path_refs);
+    args.extend(paths.iter().map(String::as_str));
 
     let set_cmd = format!(
         "git -C {} sparse-checkout set {}",
