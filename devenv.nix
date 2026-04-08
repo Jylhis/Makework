@@ -67,8 +67,6 @@ in
     config.programs = {
       nixfmt.enable = true;
       rustfmt.enable = true;
-      taplo.enable = true;
-      yamlfmt.enable = true;
     };
   };
 
@@ -92,7 +90,7 @@ in
     cargo check --workspace --all-targets
 
     echo "6/7: workspace formatting is clean"
-    treefmt --check
+    treefmt --ci
 
     echo "7/7: DEVENV_ROOT is exported and points at this repo"
     test -n "''${DEVENV_ROOT:-}"
