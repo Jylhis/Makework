@@ -10,8 +10,12 @@ env:
 
 jobs:
   devenv:
-    name: devenv test
-    runs-on: ubuntu-latest
+    name: devenv test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v5
       - uses: cachix/install-nix-action@v31
