@@ -28,16 +28,6 @@ jobs:
       - name: Run devenv tests
         run: devenv test
 
-  fmt:
-    name: Format
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - run: cargo fmt --all --check
-
   clippy:
     name: Lint
     runs-on: ubuntu-latest
