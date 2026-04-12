@@ -115,11 +115,9 @@ fn parse_grep_line(line: &str, wt_path: &Path, repo_name: &str) -> Option<Search
 
     let line_number: u32 = line_num_str.parse().ok()?;
 
-    let wt_prefix = format!("{}/", wt_path.display());
-    let relative = if let Some(rel) = file.strip_prefix(&wt_prefix) {
-        rel.to_string()
-    } else {
-        file.to_string()
+    let relative = match Path::new(file).strip_prefix(wt_path) {
+        Ok(rel) => rel.display().to_string(),
+        Err(_) => file.to_string(),
     };
 
     Some(SearchResult {
