@@ -8,24 +8,11 @@ let
     follows = [ "nixpkgs" ];
   };
 
-  crate2nixTools = pkgs.callPackage "${crate2nix}/tools.nix" { };
-
-  cargoNix =
-    pkgs.callPackage
-      (crate2nixTools.generatedCargoNix {
-        name = "makework";
-        src = pkgs.lib.cleanSource ./.;
-      })
-      {
-        buildRustCrateForPkgs =
-          _:
-          pkgs.buildRustCrate.override {
-            rustc = config.languages.rust.toolchainPackage;
-            cargo = config.languages.rust.toolchainPackage;
-          };
-      };
-
-  makework = cargoNix.workspaceMembers.mw-cli.build;
+  makework = import ./nix/package.nix {
+    inherit pkgs;
+    crate2nixSrc = crate2nix;
+    rustToolchain = config.languages.rust.toolchainPackage;
+  };
 in
 {
   packages = [
