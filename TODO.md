@@ -112,11 +112,11 @@ All steps complete:
 
 ---
 
-## Phase 15 — flake-parts module ✅
+## Phase 15 — flake-parts module ❌
 
-All steps complete:
-- [x] `nix/flake-parts-module.nix` with perSystem options: enable, package, settings
-- [x] Exposed in `flake.nix` as `flakeModules.default`
+Not implemented — `nix/flake-parts-module.nix` and `flake.nix` do not exist.
+- [ ] `nix/flake-parts-module.nix` with perSystem options: enable, package, settings
+- [ ] Exposed in `flake.nix` as `flakeModules.default`
 
 ---
 

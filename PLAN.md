@@ -2,7 +2,7 @@
 
 ## Current State
 
-All phases (0–17) are complete. The project is a Cargo workspace with three crates (`mw-core`, `mw-cli`, `mw-mcp`), full CLI, git worktree management, nix detection, status overview, Nix flake packaging, cross-project search, activity query, worktree templates, sparse-checkout support, Emacs integration, flake-parts module, and MCP server.
+Phases 0–14 and 16–17 are complete. Phase 15 (flake-parts module) is not implemented — the `nix/flake-parts-module.nix` file and `flake.nix` do not exist. The project is a Cargo workspace with three crates (`mw-core`, `mw-cli`, `mw-mcp`), full CLI, git worktree management, nix detection, status overview, crate2nix packaging via devenv, cross-project search, activity query, worktree templates, sparse-checkout support, Emacs integration, and MCP server.
 
 ## Phase 9 — `mw sync` auto-discovery with heuristics
 

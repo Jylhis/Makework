@@ -1,12 +1,13 @@
 ---
 title: "Nix packaging"
-description: "Use Makework from a Nix flake or flake-parts module."
-keywords: ["nix", "flake", "flake-parts", "devenv", "packaging"]
+description: "Use Makework from a devenv environment with crate2nix."
+keywords: ["nix", "devenv", "crate2nix", "packaging"]
 ---
 
-Makework is built and shipped with Nix. The repository contains a `devenv.nix`
-that drives local development and a `nix/flake-parts-module.nix` you can
-import into your own flakes.
+Makework is built with Nix via [devenv](https://devenv.sh) and
+[crate2nix](https://github.com/nix-community/crate2nix). The repository
+contains a `devenv.nix` that drives local development and produces a Nix
+package as a devenv output.
 
 ## devenv.nix (development)
 
@@ -24,47 +25,28 @@ cargo build
 cargo test
 cargo clippy --all-targets -- -D warnings
 cargo mutants    # mutation testing
+treefmt          # format Rust + Nix files
 ```
 
 The shell also enables Claude Code's MCP server for devenv, so AI assistants
 can introspect the dev environment.
 
-## flake-parts module
+## Building with crate2nix
 
-`nix/flake-parts-module.nix` exposes Makework as a per-system option you can
-use in your own flake:
+`devenv.nix` defines a `makework` output built via `crate2nix`, which
+converts the Cargo workspace into a pure Nix derivation tree. No internet
+access at build time.
+
+The built package is exposed through devenv's `outputs` mechanism:
 
 ```nix
-{
-  inputs.makework.url = "github:Jylhis/Makework";
-
-  outputs = { self, nixpkgs, flake-parts, makework, ... }:
-    flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = [ "x86_64-linux" "aarch64-darwin" ];
-      imports = [ makework.flakeModules.default ];
-
-      perSystem = { ... }: {
-        makework = {
-          enable = true;
-          settings.worktree_root = "/data/worktrees";
-          settings.bare_root = "/data/repos";
-        };
-      };
-    };
-}
+outputs = {
+  inherit makework;  # cargoNix.workspaceMembers.mw-cli.build
+};
 ```
 
-Setting `enable = true` adds the `mw` binary to the dev shell. The optional
-`settings` table is rendered into `config.toml`.
+## Binary caching
 
-## Building the binary directly
-
-If you only need the binary:
-
-```sh
-nix build .#makework
-./result/bin/mw --version
-```
-
-The package is defined via `crate2nix`, which converts the Cargo workspace
-into a pure Nix derivation tree. No internet access at build time.
+The devenv configuration pulls prebuilt artifacts from the `jylhis` Cachix
+cache. Pushing is opt-in via `devenv.local.nix` or by setting
+`CACHIX_AUTH_TOKEN` in CI.
