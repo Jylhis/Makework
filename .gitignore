@@ -35,5 +35,8 @@ result-*
 # Specify
 .specify/memory/
 
+# Test space
+test-space/
+
 # Added by cargo
 /target

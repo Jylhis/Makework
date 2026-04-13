@@ -691,13 +691,18 @@ pub fn dispatch(cli: Cli) {
                 }
                 CatalogAction::Add { source } => {
                     let (config, mut catalog) = load_state();
-                    let name = if mw_core::repository::parse_remote_url(&source).is_some() {
-                        catalog.catalog_add_url(&source, &config)
+                    let (name, is_new) =
+                        if mw_core::repository::parse_remote_url(&source).is_some() {
+                            catalog.catalog_add_url(&source, &config)
+                        } else {
+                            catalog.catalog_add(Path::new(&source), &config)
+                        }
+                        .unwrap_or_else(|e| die(e));
+                    if is_new {
+                        println!("Registered repository: {name}");
                     } else {
-                        catalog.catalog_add(Path::new(&source), &config)
+                        println!("Already registered: {name}");
                     }
-                    .unwrap_or_else(|e| die(e));
-                    println!("Registered repository: {name}");
                 }
                 CatalogAction::List => {
                     let (_config, catalog) = load_state();
@@ -751,11 +756,26 @@ pub fn dispatch(cli: Cli) {
                         .repos
                         .remove(&project)
                         .unwrap_or_else(|| die(format_args!("repository not found: {project}")));
+
+                    // Remove worktree directories first
+                    if let Some(wt_parent) =
+                        mw_core::worktree::worktree_parent_dir(&config, &repo.path)
+                        && wt_parent.exists()
+                        && let Err(e) = std::fs::remove_dir_all(&wt_parent)
+                    {
+                        eprintln!(
+                            "Warning: could not remove worktrees at {}: {e}",
+                            wt_parent.display()
+                        );
+                    }
+
+                    // Remove bare clone
                     if repo.path.exists()
                         && let Err(e) = std::fs::remove_dir_all(&repo.path)
                     {
                         eprintln!("Warning: could not remove bare clone: {e}");
                     }
+
                     catalog.save(&config).unwrap_or_else(|e| die(e));
                     println!("Purged: {project}");
                 }

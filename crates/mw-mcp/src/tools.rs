@@ -82,7 +82,7 @@ pub fn handle_catalog_add(config: &MakeworkConfig, params: &Value) -> Value {
     };
 
     match result {
-        Ok(name) => json!({"name": name}),
+        Ok((name, is_new)) => json!({"name": name, "created": is_new}),
         Err(e) => json!({"error": e.to_string()}),
     }
 }

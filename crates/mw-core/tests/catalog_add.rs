@@ -28,21 +28,23 @@ fn catalog_add_registers_local_repo() {
     std::fs::create_dir_all(&config_dir).unwrap();
 
     let mut catalog = Catalog::default();
-    let name = catalog
+    let (name, is_new) = catalog
         .catalog_add(&repo_dir, &config)
         .expect("catalog_add should succeed");
 
     assert_eq!(name, "my-repo");
+    assert!(is_new);
     assert!(catalog.repos.contains_key("my-repo"));
 
     let repo = &catalog.repos["my-repo"];
     assert!(repo.path.exists(), "bare clone dir should exist");
 
     // Verify idempotent re-add
-    let name2 = catalog
+    let (name2, is_new2) = catalog
         .catalog_add(&repo_dir, &config)
         .expect("re-add should succeed");
     assert_eq!(name2, "my-repo");
+    assert!(!is_new2);
     assert_eq!(catalog.repos.len(), 1);
 }
 
@@ -64,9 +66,10 @@ fn catalog_add_creates_default_worktree() {
     };
 
     let mut catalog = Catalog::default();
-    catalog
+    let (_, is_new) = catalog
         .catalog_add(&repo_dir, &config)
         .expect("catalog_add");
+    assert!(is_new);
 
     // A worktree should have been created under the worktree root
     let wt_root = tmp.path().join("worktrees");
@@ -114,11 +117,12 @@ fn catalog_add_falls_back_when_remote_unreachable() {
     };
 
     let mut catalog = Catalog::default();
-    let name = catalog
+    let (name, is_new) = catalog
         .catalog_add(&repo_dir, &config)
         .expect("catalog_add should succeed with local fallback");
 
     assert_eq!(name, "repo");
+    assert!(is_new);
     assert!(catalog.repos.contains_key("repo"));
 
     let repo = &catalog.repos["repo"];
@@ -197,15 +201,17 @@ fn catalog_add_url_is_idempotent() {
     let mut catalog = Catalog::default();
 
     // First add via local path
-    let name1 = catalog
+    let (name1, is_new1) = catalog
         .catalog_add(&source_dir, &config)
         .expect("first add");
+    assert!(is_new1);
 
     // Second add via local path — idempotent
-    let name2 = catalog
+    let (name2, is_new2) = catalog
         .catalog_add(&source_dir, &config)
         .expect("second add");
     assert_eq!(name1, name2);
+    assert!(!is_new2);
     assert_eq!(catalog.repos.len(), 1);
 }
 
@@ -224,11 +230,12 @@ fn catalog_add_url_from_github() {
     };
 
     let mut catalog = Catalog::default();
-    let name = catalog
+    let (name, is_new) = catalog
         .catalog_add_url("https://github.com/octocat/Hello-World.git", &config)
         .expect("catalog_add_url from GitHub");
 
     assert_eq!(name, "Hello-World");
+    assert!(is_new);
     assert!(catalog.repos.contains_key("Hello-World"));
     let repo = &catalog.repos["Hello-World"];
     assert!(repo.path.exists());

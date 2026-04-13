@@ -84,8 +84,8 @@ fn sync_is_idempotent() {
         .unwrap();
     assert_eq!(
         second.len(),
-        1,
-        "idempotent sync should still return the same repo since catalog_add is idempotent"
+        0,
+        "idempotent sync should not report any new repos"
     );
     assert_eq!(
         catalog.repos.len(),

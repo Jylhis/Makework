@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -41,6 +42,22 @@ pub fn worktree_path(
     }
 
     path
+}
+
+/// Compute the worktree parent directory for a bare repo path.
+///
+/// Maps `config.bare_root / host / segments.git` to `config.worktree_root / host / segments`.
+/// Strips the `.git` suffix from the final component as a string (not via
+/// `Path::with_extension`) to correctly handle names containing dots like
+/// `jylhis.com.git` → `jylhis.com`.
+///
+/// Returns `None` if `bare_path` is not under `config.bare_root`.
+pub fn worktree_parent_dir(config: &MakeworkConfig, bare_path: &Path) -> Option<PathBuf> {
+    let relative = bare_path.strip_prefix(&config.bare_root).ok()?;
+    let file_name = relative.file_name()?.to_str()?;
+    let stem = file_name.strip_suffix(".git").unwrap_or(file_name);
+    let parent = relative.parent().unwrap_or(Path::new(""));
+    Some(config.worktree_root.join(parent).join(stem))
 }
 
 /// Sanitize a branch/ref name for use as a filesystem path.
@@ -346,14 +363,17 @@ pub fn prune_worktrees(bare_path: &Path) -> Result<usize, GitError> {
     Ok(orphaned_count)
 }
 
-/// Prune orphaned worktrees across all registered repositories.
+/// Prune orphaned worktrees across all registered repositories,
+/// and remove worktree directories that belong to no catalog entry.
 ///
-/// Returns a list of `(repo_name, Result)` for repos that had orphans or errors.
+/// Returns a list of `(label, Result)` for repos/dirs that had orphans or errors.
 pub fn prune_all_worktrees(
     catalog: &Catalog,
-    _config: &MakeworkConfig,
+    config: &MakeworkConfig,
 ) -> Vec<(String, Result<usize, GitError>)> {
     let mut results = Vec::new();
+
+    // Prune stale worktree entries for known repos
     for (name, repo) in &catalog.repos {
         let result = prune_worktrees(&repo.path);
         match &result {
@@ -361,7 +381,80 @@ pub fn prune_all_worktrees(
             _ => results.push((name.clone(), result)),
         }
     }
+
+    // Find and remove orphaned worktree directories (no catalog entry)
+    for dir in find_orphaned_worktree_dirs(catalog, config) {
+        let label = dir
+            .strip_prefix(&config.worktree_root)
+            .unwrap_or(&dir)
+            .display()
+            .to_string();
+        match std::fs::remove_dir_all(&dir) {
+            Ok(()) => results.push((label, Ok(1))),
+            Err(e) => results.push((
+                label,
+                Err(GitError::Command {
+                    cmd: format!("remove {}", dir.display()),
+                    stderr: e.to_string(),
+                }),
+            )),
+        }
+    }
+
     results
+}
+
+/// Scan `config.worktree_root` for repo-level directories with no
+/// corresponding catalog entry.
+pub fn find_orphaned_worktree_dirs(catalog: &Catalog, config: &MakeworkConfig) -> Vec<PathBuf> {
+    let known_dirs: HashSet<PathBuf> = catalog
+        .repos
+        .values()
+        .filter_map(|repo| worktree_parent_dir(config, &repo.path))
+        .collect();
+
+    let mut orphaned = Vec::new();
+    walk_for_orphaned_dirs(&config.worktree_root, &known_dirs, &mut orphaned, 0);
+    orphaned
+}
+
+fn walk_for_orphaned_dirs(
+    dir: &Path,
+    known_dirs: &HashSet<PathBuf>,
+    orphaned: &mut Vec<PathBuf>,
+    depth: u32,
+) {
+    if depth > 10 {
+        return;
+    }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        if known_dirs.contains(&path) {
+            // Known repo worktree parent, skip
+            continue;
+        }
+        let is_ancestor = known_dirs.iter().any(|k| k.starts_with(&path));
+        if is_ancestor {
+            // Intermediate directory (host or owner level), recurse
+            walk_for_orphaned_dirs(&path, known_dirs, orphaned, depth + 1);
+        } else {
+            // Not known and not ancestor — check if it has subdirs (branch dirs)
+            let has_subdirs = std::fs::read_dir(&path)
+                .ok()
+                .map(|entries| entries.flatten().any(|e| e.path().is_dir()))
+                .unwrap_or(false);
+            if has_subdirs {
+                orphaned.push(path);
+            }
+        }
+    }
 }
 
 /// Result of the [`go`] function, containing the worktree path and optional

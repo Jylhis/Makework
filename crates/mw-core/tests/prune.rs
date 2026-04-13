@@ -24,7 +24,7 @@ fn prune_no_orphans_returns_zero() {
     };
 
     let mut catalog = Catalog::default();
-    catalog
+    let _ = catalog
         .catalog_add(&repo_dir, &config)
         .expect("catalog_add");
 
@@ -71,7 +71,7 @@ fn prune_cleans_orphaned_worktree() {
     };
 
     let mut catalog = Catalog::default();
-    catalog
+    let _ = catalog
         .catalog_add(&repo_dir, &config)
         .expect("catalog_add");
 

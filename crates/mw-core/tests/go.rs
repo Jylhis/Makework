@@ -25,7 +25,7 @@ fn go_default_branch_returns_existing_path() {
     };
 
     let mut catalog = Catalog::default();
-    let name = catalog
+    let (name, _) = catalog
         .catalog_add(&repo_dir, &config)
         .expect("catalog_add should succeed");
 
@@ -57,7 +57,7 @@ fn go_new_branch_creates_worktree() {
     };
 
     let mut catalog = Catalog::default();
-    let name = catalog
+    let (name, _) = catalog
         .catalog_add(&repo_dir, &config)
         .expect("catalog_add should succeed");
 

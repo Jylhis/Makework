@@ -329,11 +329,12 @@ impl Catalog {
             let repos = walk_for_repos(root, 0, options)?;
             for repo_path in repos {
                 match self.catalog_add(&repo_path, config) {
-                    Ok(name) => {
+                    Ok((name, true)) => {
                         if !added.contains(&name) {
                             added.push(name);
                         }
                     }
+                    Ok((_name, false)) => {}
                     Err(e) => {
                         eprintln!("Warning: skipping {}: {e}", repo_path.display());
                     }
@@ -347,7 +348,7 @@ impl Catalog {
         &mut self,
         source_path: &Path,
         config: &MakeworkConfig,
-    ) -> Result<String, CatalogError> {
+    ) -> Result<(String, bool), CatalogError> {
         use crate::repository::{Remote, clone_bare, fetch, get_default_branch, parse_remote_url};
         use crate::worktree::{create_worktree, worktree_path};
 
@@ -384,17 +385,25 @@ impl Catalog {
 
         // Idempotent: if already registered, return the name
         if self.repos.contains_key(&repo_name) {
-            return Ok(repo_name);
+            return Ok((repo_name, false));
         }
 
         // Compute bare clone destination
+        //
+        // Use string concatenation for the `.git` suffix instead of
+        // `set_extension` — `set_extension("git")` would turn a segment
+        // like `jylhis.com` into `jylhis.git` by replacing the existing
+        // extension.
         let bare_dest = if let Some(ref p) = parsed {
             let mut path = config.bare_root.clone();
             path.push(&p.host);
-            for seg in &p.segments {
-                path.push(seg);
+            for (i, seg) in p.segments.iter().enumerate() {
+                if i == p.segments.len() - 1 {
+                    path.push(format!("{seg}.git"));
+                } else {
+                    path.push(seg);
+                }
             }
-            path.set_extension("git");
             path
         } else {
             config
@@ -461,7 +470,7 @@ impl Catalog {
 
         self.save(config)?;
 
-        Ok(repo_name)
+        Ok((repo_name, true))
     }
 
     /// Register a remote git repository by URL.
@@ -473,7 +482,7 @@ impl Catalog {
         &mut self,
         url: &str,
         config: &MakeworkConfig,
-    ) -> Result<String, CatalogError> {
+    ) -> Result<(String, bool), CatalogError> {
         use crate::repository::{Remote, clone_bare, fetch, get_default_branch, parse_remote_url};
         use crate::worktree::{create_worktree, worktree_path};
 
@@ -487,16 +496,20 @@ impl Catalog {
 
         // Idempotent
         if self.repos.contains_key(&repo_name) {
-            return Ok(repo_name);
+            return Ok((repo_name, false));
         }
 
-        // Compute bare clone destination
+        // Compute bare clone destination (append `.git` as string, not via
+        // set_extension, to preserve dots in names like `jylhis.com`)
         let mut bare_dest = config.bare_root.clone();
         bare_dest.push(&parsed.host);
-        for seg in &parsed.segments {
-            bare_dest.push(seg);
+        for (i, seg) in parsed.segments.iter().enumerate() {
+            if i == parsed.segments.len() - 1 {
+                bare_dest.push(format!("{seg}.git"));
+            } else {
+                bare_dest.push(seg);
+            }
         }
-        bare_dest.set_extension("git");
 
         // Clone bare from URL
         if !bare_dest.exists() {
@@ -535,7 +548,7 @@ impl Catalog {
         self.repos.insert(repo_name.clone(), repo);
         self.save(config)?;
 
-        Ok(repo_name)
+        Ok((repo_name, true))
     }
 }
 
