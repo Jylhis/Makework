@@ -26,9 +26,51 @@ mw                                 # status across all worktrees
 
 ## Install
 
+### With Nix (NixOS / nix-darwin / standalone Nix)
+
+Clone the repo and build the package via devenv:
+
 ```sh
-devenv shell                # enter dev environment
+git clone https://github.com/Jylhis/makework.git
+cd makework
+devenv build makework
+```
+
+The result is a store path containing `bin/mw`. Install it into your profile:
+
+```sh
+nix profile install ./devenv/outputs/makework
+```
+
+Or add it to your NixOS configuration (e.g. in a module):
+
+```nix
+# flake input
+inputs.makework = {
+  url = "github:Jylhis/makework";
+  inputs.nixpkgs.follows = "nixpkgs";
+};
+
+# in your NixOS module
+environment.systemPackages = [ inputs.makework.devenv.outputs.makework ];
+```
+
+Prebuilt binaries are available from the `jylhis` Cachix cache:
+
+```sh
+cachix use jylhis
+```
+
+### With cargo
+
+```sh
+devenv shell                # enter dev environment (or use Rust stable 1.85+)
 cargo install --path crates/mw-cli
+```
+
+### Post-install
+
+```sh
 mw catalog init             # create config + state directories
 eval "$(mw completions bash)"  # add to .bashrc / .zshrc
 ```
