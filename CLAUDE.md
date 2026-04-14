@@ -4,27 +4,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Development Commands
 
-Requires [devenv](https://devenv.sh/) — the dev environment is defined in `devenv.nix` and provides the Rust stable toolchain, `cargo-mutants`, and treefmt.
+Requires [devenv](https://devenv.sh/) — the dev environment is defined in `devenv.nix` and provides the Rust stable toolchain, `cargo-mutants`, `just`, and treefmt.
 
 ```sh
 devenv shell                        # enter development environment
+just                                # list all available commands
+just build                          # build via nix (flake)
+just check                          # run all flake checks (build, clippy, tests, fmt)
+just fmt                            # format all code (Rust + Nix)
+just sync                           # sync devenv.lock to flake.lock nixpkgs pin
+just verify                         # verify lock files are in sync
 cargo build                         # build entire workspace
 cargo run -p mw-cli                 # run the mw binary
 cargo test                          # run all tests across workspace
 cargo test -p mw-core               # run mw-core tests only
 cargo test <test_name>              # run a single test
-treefmt                             # format all code (Rust + Nix)
 cargo clippy --all-targets -- -D warnings  # lint (CI runs with -D warnings)
 cargo mutants                       # mutation testing
 ```
 
 ## Formatting
 
-Managed by treefmt via devenv (not `.pre-commit-config.yaml`). Runs:
+Managed by treefmt with shared config in `nix/treefmt.nix` (used by both `nix fmt` and devenv). Runs:
 - **rustfmt** — formats `.rs` files
 - **nixfmt** — formats `.nix` files
 
-Use `treefmt` to format everything, or `cargo fmt` for Rust only. CI checks with `treefmt --ci`.
+Use `just fmt` (or `nix fmt` / `treefmt`) to format everything, or `cargo fmt` for Rust only.
 
 ## CI
 

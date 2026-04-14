@@ -1,15 +1,11 @@
-# Non-flake entry point.  `nix-build` uses npins; flake.nix has its
-# own pure inputs.  Both call nix/package.nix so the build logic is
-# defined once.
-{
-  pkgs ? import (import ./npins).nixpkgs { },
-}:
+# Non-flake entry point.  Uses flake-compat to read flake.lock,
+# so `nix-build default.nix -A makework` works without experimental features.
 let
-  sources = import ./npins;
+  lock = builtins.fromJSON (builtins.readFile ./flake.lock);
+  compatNode = lock.nodes.${lock.nodes.root.inputs.flake-compat};
+  compat = import (fetchTarball {
+    url = compatNode.locked.url;
+    sha256 = compatNode.locked.narHash;
+  });
 in
-{
-  makework = import ./nix/package.nix {
-    inherit pkgs;
-    crate2nixSrc = sources.crate2nix;
-  };
-}
+(compat { src = ./.; }).defaultNix.packages.${builtins.currentSystem}
