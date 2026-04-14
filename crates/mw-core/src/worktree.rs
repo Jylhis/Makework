@@ -166,6 +166,11 @@ pub fn create_worktree(
     branch: &str,
     worktree_path: &Path,
 ) -> Result<(), GitError> {
+    let cmd_str = format!(
+        "git -C {} worktree add {} {branch}",
+        bare_path.display(),
+        worktree_path.display()
+    );
     let output = Command::new("git")
         .arg("-C")
         .arg(bare_path)
@@ -175,21 +180,13 @@ pub fn create_worktree(
         .arg(branch)
         .output()
         .map_err(|e| GitError::Command {
-            cmd: format!(
-                "git -C {} worktree add {} {branch}",
-                bare_path.display(),
-                worktree_path.display()
-            ),
+            cmd: cmd_str.clone(),
             stderr: e.to_string(),
         })?;
 
     if !output.status.success() {
         return Err(GitError::Command {
-            cmd: format!(
-                "git -C {} worktree add {} {branch}",
-                bare_path.display(),
-                worktree_path.display()
-            ),
+            cmd: cmd_str,
             stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
         });
     }
