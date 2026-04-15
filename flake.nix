@@ -57,6 +57,8 @@
         }
       );
 
+      flakeModules.default = import ./nix/flake-parts-module.nix;
+
       formatter = forAllSystems (
         system:
         let
