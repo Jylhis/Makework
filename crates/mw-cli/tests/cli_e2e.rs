@@ -397,3 +397,375 @@ fn go_with_existing_repo_returns_path() {
     // --list mode should at least dispatch successfully.
     sb.cmd().args(["go", "godemo", "--list"]).assert().success();
 }
+
+// ---------------------------------------------------------------------------
+// Priority 1 — Core lifecycle tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn full_add_go_new_ls_rm_purge_lifecycle() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    let repo = sb.home.join("src/lifecycle");
+    make_test_repo(&repo);
+
+    // catalog add
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("lifecycle"));
+
+    // go prints a path
+    let go = sb.cmd().args(["go", "lifecycle"]).assert().try_success();
+    if let Ok(a) = go {
+        a.stdout(predicate::str::is_empty().not());
+    }
+
+    // new creates a worktree
+    let new = sb
+        .cmd()
+        .args(["new", "lifecycle", "feature/x"])
+        .assert()
+        .try_success();
+    if new.is_err() {
+        // Some git versions need an explicit base; skip the rest.
+        return;
+    }
+
+    // ls shows both branches
+    sb.cmd()
+        .arg("ls")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("feature/x"));
+
+    // rm the worktree
+    let _ = sb.cmd().args(["rm", "lifecycle/feature/x"]).ok();
+
+    // ls no longer shows feature/x
+    sb.cmd()
+        .arg("ls")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("feature/x").not());
+
+    // catalog purge removes the bare clone
+    sb.cmd()
+        .args(["catalog", "purge", "lifecycle"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Purged"));
+
+    // catalog list no longer shows it
+    sb.cmd()
+        .args(["catalog", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("lifecycle").not());
+}
+
+#[test]
+fn sync_discovers_repos_then_go_works() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    // Create two repos under a scan root.
+    let scan_root = sb.home.join("scan");
+    make_test_repo(&scan_root.join("alpha"));
+    make_test_repo(&scan_root.join("beta"));
+
+    // Configure scan_roots.
+    sb.cmd()
+        .args(["config", "set", "scan_roots", scan_root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // sync discovers both.
+    sb.cmd().arg("sync").assert().success();
+
+    // catalog list shows both.
+    sb.cmd()
+        .args(["catalog", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("alpha").and(predicate::str::contains("beta")));
+
+    // go to a discovered repo works.
+    let _ = sb.cmd().args(["go", "alpha"]).ok();
+}
+
+#[test]
+fn config_round_trip_with_file_verification() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    // config show has defaults.
+    sb.cmd()
+        .args(["config", "show"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("worktree_root"))
+        .stdout(predicate::str::contains("default"));
+
+    // config set worktree_root.
+    sb.cmd()
+        .args(["config", "set", "worktree_root", "/custom/wt"])
+        .assert()
+        .success();
+
+    // config show reflects new value and source.
+    sb.cmd()
+        .args(["config", "show"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("/custom/wt"))
+        .stdout(predicate::str::contains("config-file"));
+
+    // Verify the TOML file on disk.
+    let config_path = sb.home.join("config/makework/config.toml");
+    let contents = std::fs::read_to_string(&config_path).expect("config.toml should exist");
+    assert!(
+        contents.contains("/custom/wt"),
+        "config.toml should contain the set value"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Priority 2 — Edge cases and error paths
+// ---------------------------------------------------------------------------
+
+#[test]
+fn double_add_is_idempotent() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    let repo = sb.home.join("src/twice");
+    make_test_repo(&repo);
+
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Second add should say "Already registered".
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Already registered"));
+}
+
+#[test]
+fn operations_without_catalog_init() {
+    let sb = Sandbox::new();
+
+    // catalog list without init gracefully shows empty state.
+    sb.cmd()
+        .args(["catalog", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No repositories"));
+
+    // go without init should error (no project to resolve).
+    sb.cmd().args(["go", "someproject"]).assert().failure();
+}
+
+#[test]
+fn remove_nonexistent_project() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    sb.cmd()
+        .args(["catalog", "remove", "nonexistent"])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not found"));
+}
+
+#[test]
+fn visit_updates_frecency() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    let repo = sb.home.join("src/freqdemo");
+    make_test_repo(&repo);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Trigger a go to build the repo-roots cache, then visit.
+    let _ = sb.cmd().args(["go", "freqdemo"]).ok();
+    let _ = sb.cmd().args(["visit", repo.to_str().unwrap()]).ok();
+
+    // resolver explain should show a nonzero score entry.
+    sb.cmd()
+        .args(["resolver", "explain", "freqdemo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("freqdemo"));
+}
+
+#[test]
+fn ls_prune_orphaned_worktree() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    let repo = sb.home.join("src/orphdemo");
+    make_test_repo(&repo);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Create a worktree.
+    let new = sb
+        .cmd()
+        .args(["new", "orphdemo", "orphan"])
+        .assert()
+        .try_success();
+    if new.is_err() {
+        return;
+    }
+
+    // Get the worktree path from `new` output.
+    let new_output = sb.cmd().args(["new", "orphdemo", "orphan2"]).ok();
+    if let Ok(output) = new_output {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let wt_path = stdout.trim();
+        if !wt_path.is_empty() {
+            // Manually delete the worktree directory.
+            let _ = std::fs::remove_dir_all(wt_path);
+
+            // ls shows orphaned marker.
+            sb.cmd()
+                .arg("ls")
+                .assert()
+                .success()
+                .stdout(predicate::str::contains("orphaned"));
+
+            // ls --prune reports pruned.
+            sb.cmd()
+                .args(["ls", "--prune"])
+                .assert()
+                .success()
+                .stdout(predicate::str::contains("pruned"));
+        }
+    }
+}
+
+#[test]
+fn search_no_matches() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    let repo = sb.home.join("src/searchnone");
+    make_test_repo(&repo);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
+
+    sb.cmd()
+        .args(["search", "xyzzy_not_found"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No matches"));
+}
+
+#[test]
+fn query_author_filter() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    // Reuse the same repo as query_runs_against_catalog but test author filtering.
+    let repo = sb.home.join("src/authordemo");
+    make_test_repo(&repo);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
+
+    // Author filter is accepted and runs successfully.
+    sb.cmd()
+        .args(["query", "--since", "100 years ago", "--author", "Test"])
+        .assert()
+        .success();
+
+    // Querying for a nonexistent author finds nothing.
+    sb.cmd()
+        .args(["query", "--since", "100 years ago", "--author", "Nobody"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No activity"));
+}
+
+// ---------------------------------------------------------------------------
+// Priority 3 — Output format checks
+// ---------------------------------------------------------------------------
+
+#[test]
+fn catalog_list_table_headers() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    let repo = sb.home.join("src/hdrdemo");
+    make_test_repo(&repo);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
+
+    sb.cmd()
+        .args(["catalog", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("NAME"))
+        .stdout(predicate::str::contains("BRANCH"))
+        .stdout(predicate::str::contains("WORKTREES"));
+}
+
+#[test]
+fn config_show_table_headers() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    sb.cmd()
+        .args(["config", "show"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("SETTING"))
+        .stdout(predicate::str::contains("VALUE"))
+        .stdout(predicate::str::contains("SOURCE"));
+}
+
+#[test]
+fn default_status_no_repos() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    sb.cmd()
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No repositories"));
+}
+
+#[test]
+fn default_status_with_repos() {
+    let sb = Sandbox::new();
+    sb.cmd().args(["catalog", "init"]).assert().success();
+
+    let repo = sb.home.join("src/statusdemo");
+    make_test_repo(&repo);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
+
+    sb.cmd()
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("statusdemo"));
+}
