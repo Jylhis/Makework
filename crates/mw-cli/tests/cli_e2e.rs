@@ -2,18 +2,14 @@
 //!
 //! Each test isolates `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, and `XDG_STATE_HOME`
 //! into a temporary directory, then drives the real binary via
-//! `CARGO_BIN_EXE_mw`. The integration coverage these tests produce is what
-//! pushes mw-cli above the 80% line in `cargo llvm-cov`.
+//! `assert_cmd::Command::cargo_bin`. The integration coverage these tests
+//! produce is what pushes mw-cli above the 80% line in `cargo llvm-cov`.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Command;
 
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
-
-fn mw_bin() -> &'static str {
-    env!("CARGO_BIN_EXE_mw")
-}
 
 struct Sandbox {
     _tmp: tempfile::TempDir,
@@ -25,32 +21,6 @@ impl Sandbox {
         let tmp = tempfile::tempdir().expect("tempdir");
         let home = tmp.path().to_path_buf();
         Self { _tmp: tmp, home }
-    }
-
-    fn run(&self, args: &[&str]) -> Output {
-        Command::new(mw_bin())
-            .args(args)
-            .env("XDG_CONFIG_HOME", self.home.join("config"))
-            .env("XDG_DATA_HOME", self.home.join("data"))
-            .env("XDG_STATE_HOME", self.home.join("state"))
-            .env("HOME", &self.home)
-            // Avoid clobbering tester's $EDITOR (used by `config edit`).
-            .env("EDITOR", "true")
-            .output()
-            .expect("failed to spawn mw")
-    }
-
-    fn run_in(&self, cwd: &Path, args: &[&str]) -> Output {
-        Command::new(mw_bin())
-            .args(args)
-            .current_dir(cwd)
-            .env("XDG_CONFIG_HOME", self.home.join("config"))
-            .env("XDG_DATA_HOME", self.home.join("data"))
-            .env("XDG_STATE_HOME", self.home.join("state"))
-            .env("HOME", &self.home)
-            .env("EDITOR", "true")
-            .output()
-            .expect("failed to spawn mw")
     }
 
     fn cmd(&self) -> assert_cmd::Command {
@@ -96,262 +66,293 @@ fn make_test_repo(dir: &Path) {
     git(dir, &["commit", "-m", "initial commit"]);
 }
 
-fn assert_success(out: &Output, label: &str) {
-    if !out.status.success() {
-        panic!(
-            "{label} failed (exit {:?})\nstdout:\n{}\nstderr:\n{}",
-            out.status.code(),
-            String::from_utf8_lossy(&out.stdout),
-            String::from_utf8_lossy(&out.stderr)
-        );
-    }
-}
-
 #[test]
 fn version_and_help() {
     let sb = Sandbox::new();
-    let v = sb.run(&["--version"]);
-    assert_success(&v, "--version");
-    assert!(String::from_utf8_lossy(&v.stdout).contains("mw"));
+    sb.cmd()
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("mw"));
 
-    let h = sb.run(&["--help"]);
-    assert_success(&h, "--help");
+    sb.cmd().arg("--help").assert().success();
 }
 
 #[test]
 fn catalog_init_creates_directories() {
     let sb = Sandbox::new();
-    let out = sb.run(&["catalog", "init"]);
-    assert_success(&out, "catalog init");
+    sb.cmd().args(["catalog", "init"]).assert().success();
     assert!(sb.home.join("config/makework").exists());
 }
 
 #[test]
 fn catalog_add_list_remove_local_repo() {
     let sb = Sandbox::new();
-    sb.run(&["catalog", "init"]);
+    sb.cmd().args(["catalog", "init"]).assert().success();
 
     let repo = sb.home.join("src/myrepo");
     make_test_repo(&repo);
 
-    let add = sb.run(&["catalog", "add", repo.to_str().unwrap()]);
-    assert_success(&add, "catalog add");
-    assert!(String::from_utf8_lossy(&add.stdout).contains("myrepo"));
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("myrepo"));
 
-    let list = sb.run(&["catalog", "list"]);
-    assert_success(&list, "catalog list");
-    assert!(String::from_utf8_lossy(&list.stdout).contains("myrepo"));
+    sb.cmd()
+        .args(["catalog", "list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("myrepo"));
 
     // Default `mw` (no args) prints status overview.
-    let status = sb.run(&[]);
-    assert_success(&status, "status overview");
-    assert!(String::from_utf8_lossy(&status.stdout).contains("myrepo"));
+    sb.cmd()
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("myrepo"));
 
-    let rm = sb.run(&["catalog", "remove", "myrepo"]);
-    assert_success(&rm, "catalog remove");
+    sb.cmd()
+        .args(["catalog", "remove", "myrepo"])
+        .assert()
+        .success();
 }
 
 #[test]
 fn catalog_purge_removes_bare_clone() {
     let sb = Sandbox::new();
-    sb.run(&["catalog", "init"]);
+    sb.cmd().args(["catalog", "init"]).assert().success();
     let repo = sb.home.join("src/purgeme");
     make_test_repo(&repo);
-    sb.run(&["catalog", "add", repo.to_str().unwrap()]);
-    let out = sb.run(&["catalog", "purge", "purgeme"]);
-    assert_success(&out, "catalog purge");
-    assert!(String::from_utf8_lossy(&out.stdout).contains("Purged"));
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
+
+    sb.cmd()
+        .args(["catalog", "purge", "purgeme"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Purged"));
 }
 
 #[test]
 fn config_show_and_set_round_trip() {
     let sb = Sandbox::new();
-    sb.run(&["catalog", "init"]);
+    sb.cmd().args(["catalog", "init"]).assert().success();
 
-    let show = sb.run(&["config", "show"]);
-    assert_success(&show, "config show");
-    assert!(String::from_utf8_lossy(&show.stdout).contains("worktree_root"));
+    sb.cmd()
+        .args(["config", "show"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("worktree_root"));
 
-    let set = sb.run(&["config", "set", "scan_roots", "/tmp/scan-a,/tmp/scan-b"]);
-    assert_success(&set, "config set scan_roots");
+    sb.cmd()
+        .args(["config", "set", "scan_roots", "/tmp/scan-a,/tmp/scan-b"])
+        .assert()
+        .success();
 
-    let set_depth = sb.run(&["config", "set", "sync_max_depth", "3"]);
-    assert_success(&set_depth, "config set sync_max_depth");
+    sb.cmd()
+        .args(["config", "set", "sync_max_depth", "3"])
+        .assert()
+        .success();
 
-    let set_excl = sb.run(&["config", "set", "sync_exclude", "node_modules,target"]);
-    assert_success(&set_excl, "config set sync_exclude");
+    sb.cmd()
+        .args(["config", "set", "sync_exclude", "node_modules,target"])
+        .assert()
+        .success();
 
-    let bad = sb.run(&["config", "set", "definitely_not_a_key", "x"]);
-    assert!(!bad.status.success(), "unknown key should error");
+    sb.cmd()
+        .args(["config", "set", "definitely_not_a_key", "x"])
+        .assert()
+        .failure();
 }
 
 #[test]
 fn project_init_creates_makework_toml() {
     let sb = Sandbox::new();
-    sb.run(&["catalog", "init"]);
+    sb.cmd().args(["catalog", "init"]).assert().success();
     let dir = sb.home.join("project-init-test");
     std::fs::create_dir_all(&dir).unwrap();
 
-    let out = sb.run_in(&dir, &["project", "init"]);
-    assert_success(&out, "project init");
+    sb.cmd_in(&dir).args(["project", "init"]).assert().success();
     assert!(dir.join(".makework.toml").exists());
 
     // Second init should fail (file exists).
-    let again = sb.run_in(&dir, &["project", "init"]);
-    assert!(!again.status.success());
+    sb.cmd_in(&dir).args(["project", "init"]).assert().failure();
 }
 
 #[test]
 fn new_then_ls_then_rm_worktree() {
     let sb = Sandbox::new();
-    sb.run(&["catalog", "init"]);
+    sb.cmd().args(["catalog", "init"]).assert().success();
     let repo = sb.home.join("src/wtdemo");
     make_test_repo(&repo);
-    sb.run(&["catalog", "add", repo.to_str().unwrap()]);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
 
-    // Find the default branch name (master vs main differs by git version).
-    let branch_out = Command::new("git")
-        .arg("-C")
-        .arg(&repo)
-        .args(["symbolic-ref", "--short", "HEAD"])
-        .output()
-        .expect("git symbolic-ref");
-    let branch = String::from_utf8(branch_out.stdout)
-        .unwrap()
-        .trim()
-        .to_string();
-
-    let ls = sb.run(&["ls"]);
-    assert_success(&ls, "ls");
+    sb.cmd().arg("ls").assert().success();
 
     // `mw new` creates a worktree on a new branch from the default branch.
-    let new = sb.run(&["new", "wtdemo", "feature/foo"]);
-    if !new.status.success() {
+    let new = sb
+        .cmd()
+        .args(["new", "wtdemo", "feature/foo"])
+        .assert()
+        .try_success();
+    if new.is_err() {
         // Some git versions need an explicit base; skip if creation fails.
-        eprintln!(
-            "skipping new/rm test: {}",
-            String::from_utf8_lossy(&new.stderr)
-        );
         return;
     }
 
-    let ls2 = sb.run(&["ls"]);
-    assert_success(&ls2, "ls after new");
+    sb.cmd().arg("ls").assert().success();
 
-    let _rm = sb.run(&["rm", "wtdemo/feature/foo"]);
     // Don't assert success: git refuses if any files were modified by the
     // worktree-creation hook. The dispatch path is what we care about.
-
-    // Default branch worktree path:
-    let _ = branch;
+    let _ = sb.cmd().args(["rm", "wtdemo/feature/foo"]).ok();
 }
 
 #[test]
 fn fetch_and_sync_run_against_local_repo() {
     let sb = Sandbox::new();
-    sb.run(&["catalog", "init"]);
+    sb.cmd().args(["catalog", "init"]).assert().success();
     let repo = sb.home.join("src/fetchdemo");
     make_test_repo(&repo);
-    sb.run(&["catalog", "add", repo.to_str().unwrap()]);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
 
     // `fetch` against a local repo with no upstream may print an error,
     // but the dispatch path is exercised either way.
-    let _ = sb.run(&["fetch", "fetchdemo"]);
-    let _ = sb.run(&["fetch"]);
+    let _ = sb.cmd().args(["fetch", "fetchdemo"]).ok();
+    let _ = sb.cmd().arg("fetch").ok();
 
     // Configure scan_roots and run sync to discover repos.
     let scan_root = sb.home.join("scan");
-    let _ = std::fs::create_dir_all(scan_root.join("found"));
+    std::fs::create_dir_all(scan_root.join("found")).unwrap();
     make_test_repo(&scan_root.join("found"));
-    sb.run(&["config", "set", "scan_roots", scan_root.to_str().unwrap()]);
-    let sync = sb.run(&["sync"]);
-    assert_success(&sync, "sync");
+    sb.cmd()
+        .args(["config", "set", "scan_roots", scan_root.to_str().unwrap()])
+        .assert()
+        .success();
+
+    sb.cmd().arg("sync").assert().success();
 }
 
 #[test]
 fn search_runs_across_worktrees() {
     let sb = Sandbox::new();
-    sb.run(&["catalog", "init"]);
+    sb.cmd().args(["catalog", "init"]).assert().success();
     let repo = sb.home.join("src/searchdemo");
     make_test_repo(&repo);
-    sb.run(&["catalog", "add", repo.to_str().unwrap()]);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
 
-    let out = sb.run(&["search", "println"]);
-    assert_success(&out, "search");
+    sb.cmd().args(["search", "println"]).assert().success();
 }
 
 #[test]
 fn query_runs_against_catalog() {
     let sb = Sandbox::new();
-    sb.run(&["catalog", "init"]);
+    sb.cmd().args(["catalog", "init"]).assert().success();
     let repo = sb.home.join("src/querydemo");
     make_test_repo(&repo);
-    sb.run(&["catalog", "add", repo.to_str().unwrap()]);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
 
-    let short = sb.run(&["query", "--since", "100 years ago"]);
-    assert_success(&short, "query short");
+    sb.cmd()
+        .args(["query", "--since", "100 years ago"])
+        .assert()
+        .success();
 
-    let full = sb.run(&["query", "--since", "100 years ago", "--format", "full"]);
-    assert_success(&full, "query full");
+    sb.cmd()
+        .args(["query", "--since", "100 years ago", "--format", "full"])
+        .assert()
+        .success();
 }
 
 #[test]
 fn project_show_resolves_registered_repo() {
     let sb = Sandbox::new();
-    sb.run(&["catalog", "init"]);
+    sb.cmd().args(["catalog", "init"]).assert().success();
     let repo = sb.home.join("src/showdemo");
     make_test_repo(&repo);
-    sb.run(&["catalog", "add", repo.to_str().unwrap()]);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
 
-    let out = sb.run(&["project", "show", "showdemo"]);
-    assert_success(&out, "project show");
-    assert!(String::from_utf8_lossy(&out.stdout).contains("showdemo"));
+    sb.cmd()
+        .args(["project", "show", "showdemo"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("showdemo"));
 
-    let missing = sb.run(&["project", "show", "doesnotexist"]);
-    assert!(!missing.status.success());
+    sb.cmd()
+        .args(["project", "show", "doesnotexist"])
+        .assert()
+        .failure();
 }
 
 #[test]
 fn resolver_explain_runs() {
     let sb = Sandbox::new();
-    sb.run(&["catalog", "init"]);
+    sb.cmd().args(["catalog", "init"]).assert().success();
     let repo = sb.home.join("src/resolvedemo");
     make_test_repo(&repo);
-    sb.run(&["catalog", "add", repo.to_str().unwrap()]);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
 
-    let out = sb.run(&["resolver", "explain", "resolve"]);
-    assert_success(&out, "resolver explain");
-    assert!(String::from_utf8_lossy(&out.stdout).contains("Query:"));
+    sb.cmd()
+        .args(["resolver", "explain", "resolve"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Query:"));
 }
 
 #[test]
 fn init_emits_shell_hook() {
     let sb = Sandbox::new();
-    let bash = sb.run(&["init", "bash"]);
-    assert_success(&bash, "init bash");
-    assert!(String::from_utf8_lossy(&bash.stdout).contains("_makework_hook"));
+    sb.cmd()
+        .args(["init", "bash"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("_makework_hook"));
 
-    let zsh = sb.run(&["init", "zsh"]);
-    assert_success(&zsh, "init zsh");
-    assert!(String::from_utf8_lossy(&zsh.stdout).contains("chpwd_functions"));
+    sb.cmd()
+        .args(["init", "zsh"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("chpwd_functions"));
 }
 
 #[test]
 fn completions_emit_wrappers() {
     let sb = Sandbox::new();
     for shell in ["bash", "zsh", "fish"] {
-        let out = sb.run(&["completions", shell]);
-        assert_success(&out, &format!("completions {shell}"));
-        assert!(!out.stdout.is_empty());
+        sb.cmd()
+            .args(["completions", shell])
+            .assert()
+            .success()
+            .stdout(predicate::str::is_empty().not());
     }
 }
 
 #[test]
 fn visit_silently_no_ops_for_unknown_path() {
     let sb = Sandbox::new();
-    let out = sb.run(&["visit", "/totally/unknown/path"]);
     // Hidden command — must never fail user shells, even with empty state.
-    assert_success(&out, "visit unknown");
+    sb.cmd()
+        .args(["visit", "/totally/unknown/path"])
+        .assert()
+        .success();
 }
 
 #[test]
@@ -359,41 +360,40 @@ fn maintenance_status_works_in_git_repo() {
     let sb = Sandbox::new();
     let repo = sb.home.join("src/maintdemo");
     make_test_repo(&repo);
-    let out = sb.run_in(&repo, &["maintenance", "status"]);
-    assert_success(&out, "maintenance status");
-    assert!(String::from_utf8_lossy(&out.stdout).contains("Maintenance:"));
+    sb.cmd_in(&repo)
+        .args(["maintenance", "status"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Maintenance:"));
 }
 
 #[test]
 fn go_unknown_project_errors() {
     let sb = Sandbox::new();
-    sb.run(&["catalog", "init"]);
-    let out = sb.run(&["go", "definitely-not-here"]);
-    assert!(!out.status.success(), "unknown go target should error");
+    sb.cmd().args(["catalog", "init"]).assert().success();
+    sb.cmd()
+        .args(["go", "definitely-not-here"])
+        .assert()
+        .failure();
 }
 
 #[test]
 fn go_with_existing_repo_returns_path() {
     let sb = Sandbox::new();
-    sb.run(&["catalog", "init"]);
+    sb.cmd().args(["catalog", "init"]).assert().success();
     let repo = sb.home.join("src/godemo");
     make_test_repo(&repo);
-    sb.run(&["catalog", "add", repo.to_str().unwrap()]);
+    sb.cmd()
+        .args(["catalog", "add", repo.to_str().unwrap()])
+        .assert()
+        .success();
 
-    let out = sb.run(&["go", "godemo"]);
-    if out.status.success() {
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        assert!(!stdout.is_empty(), "go should print a path");
-    } else {
-        // Some platforms may fail on the worktree creation; we still exercised
-        // the dispatch path. Print stderr for debugging but don't fail.
-        eprintln!(
-            "go failed (acceptable): {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
+    // go may fail on some platforms due to worktree creation issues;
+    // we still exercise the dispatch path either way.
+    if let Ok(output) = sb.cmd().args(["go", "godemo"]).ok() {
+        output.assert().stdout(predicate::str::is_empty().not());
     }
 
     // --list mode should at least dispatch successfully.
-    let listed = sb.run(&["go", "godemo", "--list"]);
-    assert_success(&listed, "go --list");
+    sb.cmd().args(["go", "godemo", "--list"]).assert().success();
 }
