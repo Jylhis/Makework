@@ -8,6 +8,9 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
+use assert_cmd::prelude::*;
+use predicates::prelude::*;
+
 fn mw_bin() -> &'static str {
     env!("CARGO_BIN_EXE_mw")
 }
@@ -48,6 +51,22 @@ impl Sandbox {
             .env("EDITOR", "true")
             .output()
             .expect("failed to spawn mw")
+    }
+
+    fn cmd(&self) -> assert_cmd::Command {
+        let mut cmd = assert_cmd::Command::cargo_bin("mw").expect("binary not found");
+        cmd.env("XDG_CONFIG_HOME", self.home.join("config"))
+            .env("XDG_DATA_HOME", self.home.join("data"))
+            .env("XDG_STATE_HOME", self.home.join("state"))
+            .env("HOME", &self.home)
+            .env("EDITOR", "true");
+        cmd
+    }
+
+    fn cmd_in(&self, cwd: &Path) -> assert_cmd::Command {
+        let mut cmd = self.cmd();
+        cmd.current_dir(cwd);
+        cmd
     }
 }
 
