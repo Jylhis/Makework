@@ -7,9 +7,17 @@
 #   perSystem = { ... }: {
 #     makework.enable = true;
 #   };
-{ self, lib, ... }:
 {
-  options.perSystem = lib.mkPerSystemOption (
+  self,
+  lib,
+  flake-parts-lib,
+  ...
+}:
+let
+  inherit (flake-parts-lib) mkPerSystemOption;
+in
+{
+  options.perSystem = mkPerSystemOption (
     {
       config,
       pkgs,

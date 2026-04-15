@@ -11,6 +11,10 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    flake-parts = {
+      url = "github:hercules-ci/flake-parts";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
     flake-compat = {
       url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
       flake = false;
@@ -23,6 +27,7 @@
       nixpkgs,
       crate2nix,
       treefmt-nix,
+      flake-parts,
       flake-compat,
     }:
     let
@@ -51,10 +56,36 @@
 
       checks = forAllSystems (
         system:
-        import ./nix/checks.nix {
+        let
           pkgs = nixpkgs.legacyPackages.${system};
-          makework = self.packages.${system}.makework;
-        }
+          appChecks = import ./nix/checks.nix {
+            inherit pkgs;
+            makework = self.packages.${system}.makework;
+          };
+
+          # Verify the flake-parts module evaluates in a minimal flake-parts flake.
+          flake-parts-module-eval =
+            let
+              testFlake = flake-parts.lib.mkFlake { inputs = { inherit self nixpkgs flake-parts; }; } {
+                systems = [ system ];
+                imports = [ self.flakeModules.default ];
+                perSystem =
+                  { pkgs, ... }:
+                  {
+                    makework.enable = true;
+                    # Use a lightweight package to avoid building the real one in tests.
+                    makework.package = pkgs.hello;
+                  };
+              };
+            in
+            pkgs.runCommand "flake-parts-module-eval" { } ''
+              # Assert the test flake produced a devShell for this system.
+              test -n "${testFlake.devShells.${system}.default}" \
+                && echo "flake-parts module evaluation: OK" \
+                && touch $out
+            '';
+        in
+        appChecks // { inherit flake-parts-module-eval; }
       );
 
       flakeModules.default = import ./nix/flake-parts-module.nix;
