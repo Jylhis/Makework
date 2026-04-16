@@ -25,6 +25,8 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Install devenv
         run: nix profile add nixpkgs#devenv
+      - name: Verify flake.lock and devenv.lock are in sync
+        run: nix run nixpkgs#just -- verify
       - name: Run devenv tests
         run: devenv test
 

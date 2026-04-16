@@ -1,8 +1,6 @@
 default:
     @just --list --justfile {{justfile()}}
 
-_sed_inplace := if os() == "macos" { "sed -i ''" } else { "sed -i" }
-
 # Build the default package via flake
 build:
     nix build
@@ -19,37 +17,52 @@ check:
 fmt:
     nix fmt
 
-# Update all flake inputs and sync devenv lock
+# Inputs shared between flake.nix and devenv.yaml that must stay in lockstep.
+# rust-overlay is devenv-only; flake-parts / flake-compat are flake-only.
+_shared_inputs := "nixpkgs crate2nix treefmt-nix"
+
+# Update all flake inputs, rewrite devenv pins, and verify
 update:
     nix flake update
     just sync
+    just verify
 
-# Sync devenv.lock to match flake.lock nixpkgs pin
+# Rewrite devenv.yaml so every shared input pins the same commit as flake.lock
 sync:
     #!/usr/bin/env bash
     set -euo pipefail
-    NIXPKGS_NODE=$(jq -r '.nodes.root.inputs.nixpkgs' flake.lock)
-    REV=$(jq -r ".nodes.\"$NIXPKGS_NODE\".locked.rev" flake.lock)
-    echo "Syncing devenv to nixpkgs $REV"
-    {{ _sed_inplace }} "s|url: github:NixOS/nixpkgs/.*|url: github:NixOS/nixpkgs/$REV|" devenv.yaml
+    for name in {{ _shared_inputs }}; do
+        node=$(jq -r ".nodes.root.inputs.\"$name\"" flake.lock)
+        rev=$(jq -r ".nodes.\"$node\".locked.rev" flake.lock)
+        owner=$(jq -r ".nodes.\"$node\".locked.owner" flake.lock)
+        repo=$(jq -r ".nodes.\"$node\".locked.repo" flake.lock)
+        echo "Syncing $name -> github:$owner/$repo/$rev"
+        tmp=$(mktemp)
+        sed -E "s|url: github:$owner/$repo(/[^[:space:]]*)?|url: github:$owner/$repo/$rev|" \
+            devenv.yaml > "$tmp"
+        mv "$tmp" devenv.yaml
+    done
     devenv update
-    echo "Done. Both locks pinned to $REV"
 
-# Verify both lock files point to the same nixpkgs rev
+# Verify every shared input matches between flake.lock and devenv.lock
 verify:
     #!/usr/bin/env bash
     set -euo pipefail
-    FLAKE_NODE=$(jq -r '.nodes.root.inputs.nixpkgs' flake.lock)
-    FLAKE_REV=$(jq -r ".nodes.\"$FLAKE_NODE\".locked.rev" flake.lock)
-    DEVENV_NODE=$(jq -r '.nodes.root.inputs.nixpkgs' devenv.lock)
-    DEVENV_REV=$(jq -r ".nodes.\"$DEVENV_NODE\".locked.rev" devenv.lock)
-    echo "flake:  $FLAKE_REV"
-    echo "devenv: $DEVENV_REV"
-    if [ "$FLAKE_REV" != "$DEVENV_REV" ]; then
-        echo "ERROR: nixpkgs revisions are out of sync"
+    fail=0
+    printf '%-14s %-44s %-44s\n' input flake devenv
+    for name in {{ _shared_inputs }}; do
+        f_node=$(jq -r ".nodes.root.inputs.\"$name\"" flake.lock)
+        f_rev=$(jq -r ".nodes.\"$f_node\".locked.rev" flake.lock)
+        d_node=$(jq -r ".nodes.root.inputs.\"$name\"" devenv.lock)
+        d_rev=$(jq -r ".nodes.\"$d_node\".locked.rev" devenv.lock)
+        printf '%-14s %-44s %-44s\n' "$name" "$f_rev" "$d_rev"
+        [ "$f_rev" = "$d_rev" ] || fail=1
+    done
+    if [ "$fail" -ne 0 ]; then
+        echo "ERROR: shared inputs are out of sync between flake.lock and devenv.lock" >&2
         exit 1
     fi
-    echo "All lock files in sync."
+    echo "All shared inputs in sync."
 
 # Run devenv environment validation
 test-env:

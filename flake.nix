@@ -2,7 +2,7 @@
   description = "makework – opinionated project scaffolding tool";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/13043924aaa7375ce482ebe2494338e058282925";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     crate2nix = {
       url = "github:nix-community/crate2nix/0.15.0";
       inputs.nixpkgs.follows = "nixpkgs";
