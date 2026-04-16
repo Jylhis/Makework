@@ -211,9 +211,39 @@ pub enum Command {
     },
     /// Generate shell completions and wrapper
     Completions {
-        /// Shell type (bash, zsh, fish)
-        shell: clap_complete::Shell,
+        /// Shell type
+        #[arg(value_enum)]
+        shell: CompletionShell,
+        /// Write completion file to directory (packaging mode, no wrapper)
+        #[arg(long)]
+        output_dir: Option<PathBuf>,
     },
+    /// Generate man pages
+    #[command(hide = true)]
+    Man {
+        /// Output directory
+        #[arg(long, default_value = ".")]
+        output_dir: PathBuf,
+    },
+    /// Generate Texinfo source for info pages
+    #[command(hide = true)]
+    GenerateTexi {
+        /// Output file (default: stdout)
+        #[arg(long)]
+        output: Option<PathBuf>,
+    },
+}
+
+/// Shell type for completions (extends clap_complete::Shell with Nushell).
+#[derive(Debug, Clone, ValueEnum)]
+pub enum CompletionShell {
+    Bash,
+    Zsh,
+    Fish,
+    Elvish,
+    #[value(name = "powershell")]
+    PowerShell,
+    Nushell,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -969,16 +999,56 @@ PROMPT_COMMAND="_makework_hook;${{PROMPT_COMMAND}}""#
             Command::Mcp => {
                 mw_mcp::server::run_stdio();
             }
-            Command::Completions { shell } => {
+            Command::Completions { shell, output_dir } => {
                 use clap::CommandFactory;
-                use clap_complete::generate;
                 let mut cmd = Cli::command();
                 let name = cmd.get_name().to_string();
-                generate(shell, &mut cmd, &name, &mut std::io::stdout());
 
-                let wrapper = match shell {
-                    clap_complete::Shell::Bash | clap_complete::Shell::Zsh => {
-                        r#"
+                let mut buf: Vec<u8> = Vec::new();
+                match shell {
+                    CompletionShell::Nushell => {
+                        clap_complete::generate(
+                            clap_complete_nushell::Nushell,
+                            &mut cmd,
+                            &name,
+                            &mut buf,
+                        );
+                    }
+                    _ => {
+                        let clap_shell = match shell {
+                            CompletionShell::Bash => clap_complete::Shell::Bash,
+                            CompletionShell::Zsh => clap_complete::Shell::Zsh,
+                            CompletionShell::Fish => clap_complete::Shell::Fish,
+                            CompletionShell::Elvish => clap_complete::Shell::Elvish,
+                            CompletionShell::PowerShell => clap_complete::Shell::PowerShell,
+                            CompletionShell::Nushell => unreachable!(),
+                        };
+                        clap_complete::generate(clap_shell, &mut cmd, &name, &mut buf);
+                    }
+                }
+
+                if let Some(dir) = output_dir {
+                    std::fs::create_dir_all(&dir)
+                        .unwrap_or_else(|e| die(format_args!("creating output dir: {e}")));
+                    let filename = match shell {
+                        CompletionShell::Bash => "mw",
+                        CompletionShell::Zsh => "_mw",
+                        CompletionShell::Fish => "mw.fish",
+                        CompletionShell::Elvish => "mw.elv",
+                        CompletionShell::PowerShell => "_mw.ps1",
+                        CompletionShell::Nushell => "mw.nu",
+                    };
+                    std::fs::write(dir.join(filename), &buf)
+                        .unwrap_or_else(|e| die(format_args!("writing completion: {e}")));
+                } else {
+                    use std::io::Write;
+                    std::io::stdout()
+                        .write_all(&buf)
+                        .unwrap_or_else(|e| die(format_args!("writing output: {e}")));
+
+                    let wrapper = match shell {
+                        CompletionShell::Bash | CompletionShell::Zsh => {
+                            r#"
 mw() {
   local output
   output=$(command mw "$@") || return $?
@@ -997,9 +1067,9 @@ mw() {
   esac
 }
 "#
-                    }
-                    clap_complete::Shell::Fish => {
-                        r#"
+                        }
+                        CompletionShell::Fish => {
+                            r#"
 function mw
   set -l output (command mw $argv); or return $status
   switch $argv[1]
@@ -1017,12 +1087,208 @@ function mw
   end
 end
 "#
+                        }
+                        _ => "",
+                    };
+                    print!("{wrapper}");
+                }
+            }
+            Command::Man { output_dir } => {
+                use clap::CommandFactory;
+                let cmd = Cli::command();
+                std::fs::create_dir_all(&output_dir)
+                    .unwrap_or_else(|e| die(format_args!("creating output dir: {e}")));
+                generate_man_pages(&cmd, &output_dir, &[]);
+            }
+            Command::GenerateTexi { output } => {
+                use clap::CommandFactory;
+                let cmd = Cli::command();
+                let texi = generate_texinfo(&cmd);
+                if let Some(path) = output {
+                    if let Some(parent) = path.parent() {
+                        std::fs::create_dir_all(parent)
+                            .unwrap_or_else(|e| die(format_args!("creating output dir: {e}")));
                     }
-                    _ => "",
-                };
-                print!("{wrapper}");
+                    std::fs::write(&path, texi)
+                        .unwrap_or_else(|e| die(format_args!("writing texinfo: {e}")));
+                } else {
+                    print!("{texi}");
+                }
             }
         },
+    }
+}
+
+/// Recursively generate man pages for a command and its visible subcommands.
+fn generate_man_pages(cmd: &clap::Command, output_dir: &Path, parents: &[&str]) {
+    if !parents.is_empty() && cmd.is_hide_set() {
+        return;
+    }
+
+    let page_name = if parents.is_empty() {
+        cmd.get_name().to_string()
+    } else {
+        format!("{}-{}", parents.join("-"), cmd.get_name())
+    };
+
+    let man = clap_mangen::Man::new(cmd.clone());
+    let mut buf: Vec<u8> = Vec::new();
+    man.render(&mut buf)
+        .unwrap_or_else(|e| die(format_args!("rendering man page {page_name}: {e}")));
+    std::fs::write(output_dir.join(format!("{page_name}.1")), buf)
+        .unwrap_or_else(|e| die(format_args!("writing {page_name}.1: {e}")));
+
+    let next_parents: Vec<&str> = if parents.is_empty() {
+        vec![cmd.get_name()]
+    } else {
+        let mut p = parents.to_vec();
+        p.push(cmd.get_name());
+        p
+    };
+
+    for sub in cmd.get_subcommands() {
+        if !sub.is_hide_set() {
+            generate_man_pages(sub, output_dir, &next_parents);
+        }
+    }
+}
+
+/// Escape Texinfo special characters.
+fn texi_escape(s: &str) -> String {
+    s.replace('@', "@@").replace('{', "@{").replace('}', "@}")
+}
+
+/// Generate Texinfo source from the clap command tree.
+fn generate_texinfo(cmd: &clap::Command) -> String {
+    let mut out = String::new();
+    let version = cmd.get_version().unwrap_or("0.1.0");
+    let about = cmd.get_about().map(|a| a.to_string()).unwrap_or_default();
+
+    // Preamble
+    out.push_str("\\input texinfo\n");
+    out.push_str("@setfilename mw.info\n");
+    out.push_str(&format!("@settitle Makework Manual {version}\n"));
+    out.push_str(&format!("@set VERSION {version}\n"));
+    out.push_str("\n@dircategory Development\n@direntry\n");
+    out.push_str("* Makework: (mw).           Git worktree manager.\n");
+    out.push_str("@end direntry\n\n");
+    out.push_str("@titlepage\n@title Makework\n");
+    out.push_str(&format!("@subtitle Version {version}\n"));
+    out.push_str("@end titlepage\n\n");
+    out.push_str("@contents\n\n");
+
+    // Top node
+    out.push_str("@node Top\n");
+    out.push_str(&format!("@top {}\n\n", texi_escape(&about)));
+    out.push_str(&format!(
+        "{}\n\n",
+        texi_escape(
+            &cmd.get_long_about()
+                .map(|a| a.to_string())
+                .unwrap_or_else(|| about.clone())
+        )
+    ));
+
+    // Collect visible subcommands
+    let subs: Vec<&clap::Command> = cmd.get_subcommands().filter(|s| !s.is_hide_set()).collect();
+
+    // Top menu
+    out.push_str("@menu\n");
+    for sub in &subs {
+        let name = sub.get_name();
+        let sub_about = sub.get_about().map(|a| a.to_string()).unwrap_or_default();
+        out.push_str(&format!("* mw {name}::  {}\n", texi_escape(&sub_about)));
+    }
+    out.push_str("@end menu\n\n");
+
+    // Generate a chapter for each subcommand
+    for sub in &subs {
+        generate_texi_command(&mut out, sub, &format!("mw {}", sub.get_name()), 0);
+    }
+
+    out.push_str("@bye\n");
+    out
+}
+
+/// Generate a Texinfo section for a command.
+fn generate_texi_command(out: &mut String, cmd: &clap::Command, node_name: &str, depth: usize) {
+    let section_cmd = match depth {
+        0 => "@chapter",
+        1 => "@section",
+        _ => "@subsection",
+    };
+
+    let about = cmd.get_about().map(|a| a.to_string()).unwrap_or_default();
+    let long_about = cmd.get_long_about().map(|a| a.to_string());
+
+    out.push_str(&format!("@node {node_name}\n"));
+    out.push_str(&format!("{section_cmd} {node_name}\n\n"));
+    out.push_str(&format!(
+        "{}\n\n",
+        texi_escape(long_about.as_deref().unwrap_or(&about))
+    ));
+
+    // Subcommands menu (if any visible subcommands)
+    let subs: Vec<&clap::Command> = cmd.get_subcommands().filter(|s| !s.is_hide_set()).collect();
+
+    if !subs.is_empty() {
+        out.push_str("@menu\n");
+        for sub in &subs {
+            let sub_name = format!("{node_name} {}", sub.get_name());
+            let sub_about = sub.get_about().map(|a| a.to_string()).unwrap_or_default();
+            out.push_str(&format!("* {sub_name}::  {}\n", texi_escape(&sub_about)));
+        }
+        out.push_str("@end menu\n\n");
+    }
+
+    // Arguments
+    let positionals: Vec<_> = cmd.get_positionals().collect();
+    if !positionals.is_empty() {
+        out.push_str("@subheading Arguments\n\n@table @code\n");
+        for arg in &positionals {
+            let name = arg.get_id().as_str();
+            let help = arg.get_help().map(|h| h.to_string()).unwrap_or_default();
+            out.push_str(&format!(
+                "@item {}\n{}\n",
+                texi_escape(name),
+                texi_escape(&help)
+            ));
+        }
+        out.push_str("@end table\n\n");
+    }
+
+    // Options
+    let opts: Vec<_> = cmd
+        .get_opts()
+        .filter(|a| a.get_long().is_some() || a.get_short().is_some())
+        .collect();
+    if !opts.is_empty() {
+        out.push_str("@subheading Options\n\n@table @code\n");
+        for opt in &opts {
+            let mut flag = String::new();
+            if let Some(short) = opt.get_short() {
+                flag.push_str(&format!("-{short}"));
+            }
+            if let Some(long) = opt.get_long() {
+                if !flag.is_empty() {
+                    flag.push_str(", ");
+                }
+                flag.push_str(&format!("--{long}"));
+            }
+            let help = opt.get_help().map(|h| h.to_string()).unwrap_or_default();
+            out.push_str(&format!(
+                "@item {}\n{}\n",
+                texi_escape(&flag),
+                texi_escape(&help)
+            ));
+        }
+        out.push_str("@end table\n\n");
+    }
+
+    // Recurse into subcommands
+    for sub in &subs {
+        let sub_node = format!("{node_name} {}", sub.get_name());
+        generate_texi_command(out, sub, &sub_node, depth + 1);
     }
 }
 

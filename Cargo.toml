@@ -11,5 +11,7 @@ serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
+clap_complete_nushell = "4"
+clap_mangen = "0.3"
 etcetera = "0.8"
 gix = { version = "0.72", default-features = false, features = ["revision"] }
