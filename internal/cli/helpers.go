@@ -60,6 +60,13 @@ func recordVisit(repoName, branch string) {
 	if path == "" {
 		return
 	}
+	lockPath := path + ".lock"
+	lock, err := resolver.AcquireLock(lockPath)
+	if err != nil {
+		slog.Warn("failed to acquire visits lock, proceeding without lock", "path", lockPath, "error", err)
+	} else {
+		defer lock.Close()
+	}
 	db, err := resolver.LoadVisits(path)
 	if err != nil {
 		slog.Warn("failed to load visits database", "path", path, "error", err)
