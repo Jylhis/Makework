@@ -5,6 +5,7 @@ package nix
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,7 +79,11 @@ func checkEnvrc(dir string) *Detected {
 	if err != nil {
 		return nil
 	}
-	defer func() { _ = f.Close() }()
+	defer func() {
+		if err := f.Close(); err != nil {
+			slog.Debug("failed to close .envrc", "dir", dir, "error", err)
+		}
+	}()
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		trimmed := strings.TrimSpace(scanner.Text())

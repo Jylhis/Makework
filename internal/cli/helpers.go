@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,10 +60,16 @@ func recordVisit(repoName, branch string) {
 	if path == "" {
 		return
 	}
-	db, _ := resolver.LoadVisits(path)
+	db, err := resolver.LoadVisits(path)
+	if err != nil {
+		slog.Warn("failed to load visits database", "path", path, "error", err)
+		db = resolver.NewVisitsDB()
+	}
 	ctx := resolver.DefaultContext()
 	db.RecordVisit(fmt.Sprintf("%s:%s", repoName, branch), ctx.Now)
-	_ = db.Save(path)
+	if err := db.Save(path); err != nil {
+		slog.Warn("failed to save visits database", "path", path, "error", err)
+	}
 }
 
 func writeRepoRootsCache(cat *catalog.Catalog) {
@@ -70,7 +77,10 @@ func writeRepoRootsCache(cat *catalog.Catalog) {
 	if err != nil {
 		return
 	}
-	_ = os.MkdirAll(state, 0o755)
+	if err := os.MkdirAll(state, 0o755); err != nil {
+		slog.Warn("failed to create state directory", "path", state, "error", err)
+		return
+	}
 	var roots []string
 	for _, r := range cat.Repos {
 		roots = append(roots, r.Path)
@@ -81,8 +91,12 @@ func writeRepoRootsCache(cat *catalog.Catalog) {
 	for _, r := range roots {
 		data += r + "\n"
 	}
-	if os.WriteFile(tmp, []byte(data), 0o644) == nil {
-		_ = os.Rename(tmp, path)
+	if err := os.WriteFile(tmp, []byte(data), 0o644); err != nil {
+		slog.Warn("failed to write repo roots cache", "path", tmp, "error", err)
+		return
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		slog.Warn("failed to rename repo roots cache", "from", tmp, "to", path, "error", err)
 	}
 }
 
