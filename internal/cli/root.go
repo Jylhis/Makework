@@ -47,13 +47,20 @@ func newRoot() *cobra.Command {
 	return root
 }
 
+// Main runs the root command and returns the exit code.
+// Exposed for testscript integration.
+func Main() int {
+	if err := newRoot().Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
+		return 1
+	}
+	return 0
+}
+
 // Execute runs the root command with stdin/stdout/stderr and exits with the
 // appropriate status. Kept compact so `cmd/mw/main.go` stays trivial.
 func Execute() {
-	if err := newRoot().Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", err)
-		os.Exit(1)
-	}
+	os.Exit(Main())
 }
 
 // silenceSubcommand marks a command as quiet on errors so our own `Die`
