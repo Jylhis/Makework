@@ -4,50 +4,62 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Development Commands
 
-Requires [devenv](https://devenv.sh/) — the dev environment is defined in `devenv.nix` and provides the Rust stable toolchain, `cargo-mutants`, `just`, and treefmt.
+Requires [devenv](https://devenv.sh/) — the dev environment is defined in `devenv.nix` and provides Go, golangci-lint, gopls, `just`, and treefmt.
 
 ```sh
 devenv shell                        # enter development environment
 just                                # list all available commands
 just build                          # build via nix (flake)
-just check                          # run all flake checks (build, clippy, tests, fmt)
-just fmt                            # format all code (Rust + Nix)
+just check                          # run all flake checks (build, lint, tests, fmt)
+just fmt                            # format all code (Go + Nix)
+just test                           # run Go tests
+just lint                           # run golangci-lint
 just sync                           # sync devenv.lock to flake.lock nixpkgs pin
 just verify                         # verify lock files are in sync
-cargo build                         # build entire workspace
-cargo run -p mw-cli                 # run the mw binary
-cargo test                          # run all tests across workspace
-cargo test -p mw-core               # run mw-core tests only
-cargo test <test_name>              # run a single test
-cargo clippy --all-targets -- -D warnings  # lint (CI runs with -D warnings)
-cargo mutants                       # mutation testing
+go build ./cmd/mw                   # build the mw binary
+go test ./...                       # run all tests
+go test -run TestName ./internal/pkg/...  # run a single test
+golangci-lint run                   # lint
 ```
 
 ## Formatting
 
 Managed by treefmt with shared config in `nix/treefmt.nix` (used by both `nix fmt` and devenv). Runs:
-- **rustfmt** — formats `.rs` files
+- **gofmt** — formats `.go` files
 - **nixfmt** — formats `.nix` files
 
-Use `just fmt` (or `nix fmt` / `treefmt`) to format everything, or `cargo fmt` for Rust only.
+Use `just fmt` (or `nix fmt` / `treefmt`) to format everything.
 
 ## CI
 
 Two GitHub Actions workflows:
-- **CI** (`ci.yml`): `devenv test` (matrix: linux + macos), format check, clippy lint (`-D warnings`), build & test
-- **Build** (`build.yml`): SonarQube/SonarCloud analysis with clippy reports and code coverage via `cargo-llvm-cov`
+- **CI** (`ci.yml`): `devenv test` (matrix: linux + macos), Go lint, Go test, Go build
+- **Build** (`build.yml`): SonarQube/SonarCloud analysis with Go coverage
 
 ## Project Overview
 
-Cargo workspace with three crates:
-- **`mw-core`** (`crates/mw-core/`) — library crate with all business logic (config, catalog, repository, resolver, worktree, project, maintenance, nix detection, status, search, query, template)
-- **`mw-cli`** (`crates/mw-cli/`) — binary crate (`mw`) with clap CLI definitions and thin dispatch to mw-core
-- **`mw-mcp`** (`crates/mw-mcp/`) — MCP server crate exposing makework functionality over JSON-RPC stdio transport for AI assistant integration
+Single Go module (`github.com/jylhis/makework`) with:
+- **`cmd/mw/`** — binary entry point
+- **`internal/cli/`** — Cobra CLI definitions and dispatch
+- **`internal/config/`** — config.toml loading and management
+- **`internal/catalog/`** — repo registry (catalog.toml), sync, add, resolution
+- **`internal/resolver/`** — weighted fuzzy project resolution (fuzzy + frecency + activity + context)
+- **`internal/worktree/`** — git worktree path computation, creation, listing, sparse-checkout
+- **`internal/repo/`** — git shell-out wrappers and URL parsing
+- **`internal/nix/`** — nix environment detection
+- **`internal/project/`** — per-project .makework.toml schema
+- **`internal/status/`** — worktree status and caching
+- **`internal/search/`** — grep across worktrees
+- **`internal/query/`** — git log activity queries
+- **`internal/template/`** — template file application
+- **`internal/maintenance/`** — git maintenance registration
+- **`internal/xdgpath/`** — XDG directory resolution
+- **`internal/buildinfo/`** — version info via ldflags
 
-Edition 2024. Key dependencies: clap (derive) + clap_complete, serde + serde_json + toml, etcetera (XDG), gix (gitoxide), strsim (fuzzy matching).
+Key dependencies: cobra, pelletier/go-toml/v2, agnivade/levenshtein, cobra/doc.
 
 ## Configuration Files
 - `$XDG_CONFIG_HOME/makework/config.toml` — global config
 - `$XDG_CONFIG_HOME/makework/catalog.toml` — repo registry
 - Per-project `.makework.toml` — subprojects, sparse-checkout paths
-- `$XDG_STATE_HOME/makework/` — status cache
+- `$XDG_STATE_HOME/makework/` — status cache, visits.json
