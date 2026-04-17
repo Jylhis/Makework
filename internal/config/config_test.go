@@ -125,6 +125,98 @@ func TestApplySetDepth(t *testing.T) {
 	}
 }
 
+// --- Validate tests ---
+
+func TestValidateOK(t *testing.T) {
+	cfg, err := Defaults()
+	if err != nil {
+		t.Fatalf("Defaults: %v", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate on defaults should pass, got: %v", err)
+	}
+}
+
+func TestValidateEmptyWorktreeRoot(t *testing.T) {
+	cfg := &Config{WorktreeRoot: "", BareRoot: "/d/r"}
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for empty worktree_root")
+	}
+}
+
+func TestValidateEmptyBareRoot(t *testing.T) {
+	cfg := &Config{WorktreeRoot: "/d/w", BareRoot: ""}
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for empty bare_root")
+	}
+}
+
+func TestValidateRelativeWorktreeRoot(t *testing.T) {
+	cfg := &Config{WorktreeRoot: "relative/path", BareRoot: "/d/r"}
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for relative worktree_root")
+	}
+}
+
+func TestValidateRelativeBareRoot(t *testing.T) {
+	cfg := &Config{WorktreeRoot: "/d/w", BareRoot: "relative/path"}
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error for relative bare_root")
+	}
+}
+
+func TestValidateSamePaths(t *testing.T) {
+	cfg := &Config{WorktreeRoot: "/d/same", BareRoot: "/d/same"}
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error when worktree_root == bare_root")
+	}
+}
+
+func TestValidateSamePathsTrailingSlash(t *testing.T) {
+	cfg := &Config{WorktreeRoot: "/d/same/", BareRoot: "/d/same"}
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error when paths differ only by trailing slash")
+	}
+}
+
+func TestValidateResolverZeroWeights(t *testing.T) {
+	cfg := &Config{
+		WorktreeRoot: "/d/w",
+		BareRoot:     "/d/r",
+		Resolver:     &ResolverConfig{},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Error("expected error when all resolver weights are zero")
+	}
+}
+
+func TestValidateResolverNonUnitSum(t *testing.T) {
+	cfg := &Config{
+		WorktreeRoot: "/d/w",
+		BareRoot:     "/d/r",
+		Resolver: &ResolverConfig{
+			WeightFuzzy:    0.5,
+			WeightFrecency: 0.5,
+			WeightActivity: 0.5,
+			WeightContext:  0.5,
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("non-unit sum should be allowed, got: %v", err)
+	}
+}
+
+func TestValidateResolverNilIsOK(t *testing.T) {
+	cfg := &Config{
+		WorktreeRoot: "/d/w",
+		BareRoot:     "/d/r",
+		Resolver:     nil,
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("nil resolver should be allowed, got: %v", err)
+	}
+}
+
 func TestResolverApplyDefaults(t *testing.T) {
 	r := ResolverConfig{}
 	r.ApplyDefaults()
