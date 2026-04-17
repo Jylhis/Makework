@@ -13,13 +13,12 @@ build-legacy:
 check:
     nix flake check
 
-# Format all code (Nix + Rust + Go)
+# Format all code (Nix + Go)
 fmt:
     nix fmt
 
 # Inputs shared between flake.nix and devenv.yaml that must stay in lockstep.
-# rust-overlay is devenv-only; flake-parts / flake-compat are flake-only.
-_shared_inputs := "nixpkgs crate2nix treefmt-nix"
+_shared_inputs := "nixpkgs treefmt-nix"
 
 # Update all flake inputs, rewrite devenv pins, and verify
 update:
@@ -68,27 +67,15 @@ verify:
 test-env:
     devenv test
 
-# Run cargo tests
+# Run Go tests
 test:
-    cargo test --workspace
-
-# Lint with clippy
-lint:
-    cargo clippy --all-targets -- -D warnings
-
-# Run go tests (coexists with Rust during port)
-go-test:
     go test -race ./...
 
-# Lint Go code with golangci-lint
-go-lint:
+# Lint Go code
+lint:
     golangci-lint run
 
-# Build the Go binary
-go-build:
-    go build -o result-go/mw ./cmd/mw
-
 # Generate Go coverage report
-go-cover:
+cover:
     go test -coverprofile=coverage.out ./...
     go tool cover -html=coverage.out
