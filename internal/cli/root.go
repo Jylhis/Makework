@@ -37,6 +37,7 @@ func newRoot() *cobra.Command {
 		newQueryCmd(),
 		newMcpCmd(),
 		newResolverCmd(),
+		newAiCmd(),
 		newInitCmd(),
 		newVisitCmd(),
 		newCompletionsCmd(),

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -108,5 +109,35 @@ func TestVersionFlag(t *testing.T) {
 	}
 	if out == "" {
 		t.Error("expected version output")
+	}
+}
+
+func TestAiInitOutputsSkill(t *testing.T) {
+	out, err := captureOutput(t, "ai", "init")
+	if err != nil {
+		t.Fatalf("ai init: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(out, "name: makework") {
+		t.Error("expected YAML frontmatter with 'name: makework'")
+	}
+	if !strings.Contains(out, "mw go") {
+		t.Error("expected 'mw go' command reference in skill output")
+	}
+	if !strings.Contains(out, "mw catalog list") {
+		t.Error("expected 'mw catalog list' in skill output")
+	}
+}
+
+func TestAiInitContainsFrontmatter(t *testing.T) {
+	out, err := captureOutput(t, "ai", "init")
+	if err != nil {
+		t.Fatalf("ai init: %v", err)
+	}
+	if !strings.HasPrefix(out, "---\n") {
+		t.Error("expected output to start with YAML frontmatter delimiter")
+	}
+	// Should have closing frontmatter
+	if !strings.Contains(out, "\n---\n") {
+		t.Error("expected closing frontmatter delimiter")
 	}
 }
