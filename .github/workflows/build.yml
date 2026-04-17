@@ -12,22 +12,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-      - uses: dtolnay/rust-toolchain@stable
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
         with:
-          components: clippy, llvm-tools-preview
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Run Clippy
-        run: cargo clippy --all-targets --message-format=json > clippy-report.json
+          go-version-file: go.mod
       - name: Run tests with coverage
-        run: cargo llvm-cov --lcov --output-path lcov.info
-      - name: Extract version from Cargo.toml
-        id: cargo_version
-        run: echo "version=$(cargo metadata --no-deps --format-version=1 | jq -r '.packages[0].version')" >> "$GITHUB_OUTPUT"
+        run: go test -coverprofile=coverage.out ./...
+      - name: Run linter
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          golangci-lint run --out-format checkstyle > golangci-report.xml || true
+      - name: Extract version
+        id: go_version
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v6
         with:
-          args: -Dsonar.projectVersion=${{ steps.cargo_version.outputs.version }}
+          args: -Dsonar.projectVersion=${{ steps.go_version.outputs.version }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

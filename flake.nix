@@ -1,12 +1,8 @@
 {
-  description = "makework – opinionated project scaffolding tool";
+  description = "makework – opinionated git worktree manager";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    crate2nix = {
-      url = "github:nix-community/crate2nix/0.15.0";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -25,7 +21,6 @@
     {
       self,
       nixpkgs,
-      crate2nix,
       treefmt-nix,
       flake-parts,
       flake-compat,
@@ -45,7 +40,6 @@
         let
           makework = import ./nix/package.nix {
             pkgs = nixpkgs.legacyPackages.${system};
-            crate2nixSrc = crate2nix;
           };
         in
         {

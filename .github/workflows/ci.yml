@@ -5,9 +5,6 @@ on:
     branches: [main, master]
   pull_request:
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
   devenv:
     name: devenv test (${{ matrix.os }})
@@ -29,37 +26,6 @@ jobs:
         run: nix run nixpkgs#just -- verify
       - name: Run devenv tests
         run: devenv test
-
-  fmt:
-    name: Format
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-      - run: cargo fmt --all --check
-
-  clippy:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-targets -- -D warnings
-
-  build-and-test:
-    name: Build & Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo build --all-targets
-      - run: cargo test
 
   go-lint:
     name: Go Lint

@@ -1,57 +1,62 @@
-# Flake checks for application-level validation.
-# Called from flake.nix with { pkgs, makework, src }.
+# Flake checks for application-level validation (Go).
 {
   pkgs,
   makework,
   src ? pkgs.lib.cleanSource ./..,
 }:
-let
-  version = (builtins.fromTOML (builtins.readFile ../Cargo.toml)).workspace.package.version;
-
-  rustCheck =
-    args:
-    pkgs.rustPlatform.buildRustPackage (
-      {
-        pname = "makework-check";
-        inherit version src;
-        cargoLock.lockFile = ../Cargo.lock;
-        doInstall = false;
-      }
-      // args
-    );
-in
 {
   build = makework;
 
-  clippy = rustCheck {
-    pname = "makework-clippy";
-    nativeBuildInputs = [ pkgs.clippy ];
-    buildPhase = ''
-      cargo clippy --workspace --all-targets -- -D warnings
-    '';
-    doCheck = false;
-    installPhase = "touch $out";
-  };
-
-  tests = rustCheck {
-    pname = "makework-tests";
-    buildPhase = "true";
-    doCheck = true;
-    installPhase = "touch $out";
-  };
-
-  formatting =
-    pkgs.runCommand "makework-fmt-check"
+  lint =
+    pkgs.runCommand "makework-lint"
       {
         nativeBuildInputs = [
-          pkgs.rustfmt
-          pkgs.cargo
+          pkgs.go
+          pkgs.golangci-lint
         ];
         inherit src;
       }
       ''
+        export HOME=$TMPDIR
+        export GOFLAGS="-mod=mod"
         cd $src
-        cargo fmt --all --check
+        golangci-lint run --timeout 5m ./...
+        touch $out
+      '';
+
+  tests =
+    pkgs.runCommand "makework-tests"
+      {
+        nativeBuildInputs = [
+          pkgs.go
+          pkgs.git
+        ];
+        inherit src;
+      }
+      ''
+        export HOME=$TMPDIR
+        export GIT_CONFIG_GLOBAL=$TMPDIR/.gitconfig
+        git config --global user.email "test@test.com"
+        git config --global user.name "Test"
+        cd $src
+        go test -count=1 ./...
+        touch $out
+      '';
+
+  formatting =
+    pkgs.runCommand "makework-fmt-check"
+      {
+        nativeBuildInputs = [ pkgs.go ];
+        inherit src;
+      }
+      ''
+        cd $src
+        unformatted=$(gofmt -l .)
+        if [ -n "$unformatted" ]; then
+          echo "The following files need gofmt:"
+          echo "$unformatted"
+          exit 1
+        fi
         touch $out
       '';
 }

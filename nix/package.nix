@@ -1,42 +1,31 @@
-# Shared build logic for makework.
-# Called from devenv.nix, default.nix, and flake.nix — each provides
-# its own pkgs and crate2nix source.
+# Shared build logic for makework (Go).
+# Called from devenv.nix, default.nix, and flake.nix.
 {
   pkgs,
-  crate2nixSrc,
-  rustToolchain ? null,
   src ? pkgs.lib.cleanSource ./..,
 }:
 let
-  version = (builtins.fromTOML (builtins.readFile ../Cargo.toml)).workspace.package.version;
+  version = pkgs.lib.removeSuffix "\n" (builtins.readFile ../VERSION);
 
-  crate2nixTools = pkgs.callPackage "${crate2nixSrc}/tools.nix" { };
-
-  cargoNix =
-    pkgs.callPackage
-      (crate2nixTools.generatedCargoNix {
-        name = "makework";
-        inherit src;
-      })
-      (
-        pkgs.lib.optionalAttrs (rustToolchain != null) {
-          buildRustCrateForPkgs =
-            _:
-            pkgs.buildRustCrate.override {
-              rustc = rustToolchain;
-              cargo = rustToolchain;
-            };
-        }
-      );
-
-  mw-bin = cargoNix.workspaceMembers.mw-cli.build;
+  mw-bin = pkgs.buildGoModule {
+    pname = "mw";
+    inherit version src;
+    vendorHash = "sha256-Z2ztOIa5IT1/TfFJ7pkIwxdVBvUJYdkm0STFFfvQ7YE=";
+    subPackages = [ "cmd/mw" ];
+    ldflags = [
+      "-s"
+      "-w"
+      "-X github.com/jylhis/makework/internal/buildinfo.Version=${version}"
+    ];
+    # Tests shell out to git and need HOME; run via checks instead.
+    doCheck = false;
+  };
 in
 pkgs.symlinkJoin {
   name = "makework-${version}";
   paths = [ mw-bin ];
   nativeBuildInputs = [
     pkgs.installShellFiles
-    pkgs.texinfoInteractive
   ];
   postBuild = ''
     # Man pages
@@ -51,10 +40,5 @@ pkgs.symlinkJoin {
     installShellCompletion --zsh _mw
     $out/bin/mw completions fish --output-dir .
     installShellCompletion --fish mw.fish
-
-    # Info pages
-    $out/bin/mw generate-texi --output mw.texi
-    makeinfo mw.texi -o mw.info
-    install -Dm644 mw.info $out/share/info/mw.info
   '';
 }
