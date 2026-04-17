@@ -1,0 +1,10 @@
+env HOME=$WORK
+env XDG_CONFIG_HOME=$WORK/.config
+env XDG_DATA_HOME=$WORK/.local/share
+env XDG_STATE_HOME=$WORK/.local/state
+
+exec mw catalog init
+
+# Setting bare_root to a relative path should fail
+! exec mw config set bare_root relative/path
+stderr 'absolute path'

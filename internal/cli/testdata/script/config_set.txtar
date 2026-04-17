@@ -1,0 +1,9 @@
+env HOME=$WORK
+env XDG_CONFIG_HOME=$WORK/.config
+env XDG_DATA_HOME=$WORK/.local/share
+env XDG_STATE_HOME=$WORK/.local/state
+
+exec mw catalog init
+exec mw config set worktree_root $WORK/custom-wt
+exec mw config show
+stdout 'custom-wt'

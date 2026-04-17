@@ -65,7 +65,11 @@ func recordVisit(repoName, branch string) {
 	if err != nil {
 		slog.Warn("failed to acquire visits lock, proceeding without lock", "path", lockPath, "error", err)
 	} else {
-		defer lock.Close()
+		defer func() {
+			if err := lock.Close(); err != nil {
+				slog.Warn("failed to release visits lock", "path", lockPath, "error", err)
+			}
+		}()
 	}
 	db, err := resolver.LoadVisits(path)
 	if err != nil {

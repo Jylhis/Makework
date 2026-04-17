@@ -1,0 +1,2 @@
+exec mw --version
+stdout 'mw version'

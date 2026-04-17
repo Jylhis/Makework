@@ -32,7 +32,7 @@ func AcquireLock(path string) (io.Closer, error) {
 		return nil, err
 	}
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		f.Close()
+		_ = f.Close() // best-effort close on flock failure
 		return nil, err
 	}
 	return &fileLock{f: f}, nil

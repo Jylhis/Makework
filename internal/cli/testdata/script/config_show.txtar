@@ -1,0 +1,8 @@
+env HOME=$WORK
+env XDG_CONFIG_HOME=$WORK/.config
+env XDG_DATA_HOME=$WORK/.local/share
+env XDG_STATE_HOME=$WORK/.local/state
+
+exec mw config show
+stdout 'worktree_root'
+stdout 'bare_root'
