@@ -1,6 +1,9 @@
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/cobra"
+	"github.com/spf13/cobra/doc"
+)
 
 func newManCmd() *cobra.Command {
 	var outputDir string
@@ -10,7 +13,12 @@ func newManCmd() *cobra.Command {
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return notImplemented("man")
+			root := cmd.Root()
+			header := &doc.GenManHeader{
+				Title:   "MW",
+				Section: "1",
+			}
+			return doc.GenManTree(root, header, outputDir)
 		},
 	}
 	cmd.Flags().StringVar(&outputDir, "output-dir", ".", "Output directory")
