@@ -122,6 +122,9 @@ func Load() (*Config, error) {
 	if err := expandTildePaths(&cfg); err != nil {
 		return nil, err
 	}
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config validation: %w", err)
+	}
 	return &cfg, nil
 }
 
@@ -145,6 +148,33 @@ func expandTildePaths(c *Config) error {
 			return err
 		}
 		c.TemplateDir = &expanded
+	}
+	return nil
+}
+
+// Validate checks cross-field constraints on the config.
+func (c *Config) Validate() error {
+	if c.WorktreeRoot == "" {
+		return errors.New("worktree_root must not be empty")
+	}
+	if c.BareRoot == "" {
+		return errors.New("bare_root must not be empty")
+	}
+	if !filepath.IsAbs(c.WorktreeRoot) {
+		return fmt.Errorf("worktree_root must be an absolute path, got %q", c.WorktreeRoot)
+	}
+	if !filepath.IsAbs(c.BareRoot) {
+		return fmt.Errorf("bare_root must be an absolute path, got %q", c.BareRoot)
+	}
+	if filepath.Clean(c.WorktreeRoot) == filepath.Clean(c.BareRoot) {
+		return fmt.Errorf("worktree_root and bare_root must differ (both are %q)", c.WorktreeRoot)
+	}
+	if c.Resolver != nil {
+		sum := c.Resolver.WeightFuzzy + c.Resolver.WeightFrecency +
+			c.Resolver.WeightActivity + c.Resolver.WeightContext
+		if sum < 0.01 {
+			return fmt.Errorf("resolver weights sum to %.3f; at least one weight must be positive", sum)
+		}
 	}
 	return nil
 }
@@ -204,6 +234,9 @@ func Set(key, value string) error {
 	}
 	if err := applySet(cfg, key, value); err != nil {
 		return err
+	}
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("config validation after set: %w", err)
 	}
 	return cfg.Save()
 }
