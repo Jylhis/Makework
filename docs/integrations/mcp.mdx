@@ -1,80 +1,58 @@
 ---
-title: "MCP server"
-description: "Expose Makework to Claude Code and other AI assistants over the Model Context Protocol."
-keywords: ["mcp", "model context protocol", "claude", "ai", "json-rpc"]
+title: "Claude Code skill"
+description: "Give Claude Code structured knowledge about your Makework setup via a skill definition."
+keywords: ["claude", "ai", "skill", "claude-code"]
 ---
 
-The `mw-mcp` crate exposes the same operations as the CLI over the
-[Model Context Protocol](https://modelcontextprotocol.io/), so an AI agent
-can navigate your repos, register new ones, fetch updates, and read status —
-all through structured tool calls instead of shell parsing.
+The `mw ai init` command outputs a
+[Claude Code skill](https://docs.anthropic.com/en/docs/claude-code/skills)
+definition that teaches Claude Code how to navigate your repos, manage the
+catalog, and run cross-project operations — without parsing shell output.
 
-## Start the server
+## Install the skill
 
 ```sh
-mw mcp
+mw ai init > .claude/skills/makework.md
 ```
 
-That spawns a JSON-RPC server on stdio. It's intended to be launched by an
-MCP client (Claude Code, Continue, etc.), not run interactively.
+Claude Code automatically picks up skills from `.claude/skills/`. Place it
+in the project root or your home directory depending on whether you want
+it scoped to one repo or available globally.
 
-## Resources
+## What the skill provides
 
-| URI                 | Contents                                              |
-|---------------------|-------------------------------------------------------|
-| `makework://catalog` | Every registered repo with metadata and subprojects |
-| `makework://status`  | Worktree overview: branch, dirty count, ahead/behind |
+The skill is a structured prompt that describes all `mw` commands:
 
-Resources are read-only snapshots; clients fetch them with
-`resources/read`.
+| Operation         | Command                          | Description                              |
+|-------------------|----------------------------------|------------------------------------------|
+| Navigate          | `mw go <query>`                  | Fuzzy-match a project and cd into it     |
+| Create worktree   | `mw new <project> <ref>`         | Create a new worktree for a branch       |
+| Remove worktree   | `mw rm <project>/<ref>`          | Remove a worktree                        |
+| List worktrees    | `mw ls`                          | Show all active worktrees                |
+| Sync repos        | `mw sync`                        | Discover and register repos from scan roots |
+| Fetch updates     | `mw fetch [project]`             | Fetch all or specific repos              |
+| Catalog add       | `mw catalog add <path\|url>`     | Register a repo by path or URL           |
+| Catalog list      | `mw catalog list`                | Show all registered repos                |
+| Status            | `mw status`                      | Worktree overview (branch, dirty, ahead/behind) |
+| Search            | `mw search <pattern>`            | Grep across all worktrees                |
 
-## Tools
+## Regenerate after updates
 
-| Tool         | Arguments                          | Returns                              |
-|--------------|------------------------------------|--------------------------------------|
-| `go`         | `project: string`, `ref?: string` | Worktree path and Nix activation     |
-| `sync`       | `depth?: int`                      | List of newly registered repos       |
-| `catalog_add`| `source: string`                   | Name of the registered repository    |
-| `fetch`      | `project?: string`                 | Per-repo success or error            |
+If you update `mw` to a new version, regenerate the skill to pick up any
+new commands:
 
-Errors come back as MCP error objects with a human-readable message.
-
-## Wire it into Claude Code
-
-Add an entry to your Claude Code MCP config (typically `~/.mcp.json` or
-`settings.json`):
-
-```json
-{
-  "mcpServers": {
-    "makework": {
-      "type": "stdio",
-      "command": "mw",
-      "args": ["mcp"]
-    }
-  }
-}
+```sh
+mw ai init > .claude/skills/makework.md
 ```
-
-Restart Claude Code. The agent will discover the `go`, `sync`, `catalog_add`,
-and `fetch` tools, plus the two resources, and can call them with
-auto-generated argument schemas.
 
 ## Example session
 
 ```text
 > claude: which repos are registered?
-[reads makework://catalog]
+[runs mw catalog list]
 You have 7 repositories registered: ...
 
 > claude: navigate to the auth service
-[calls go(project: "auth-service")]
-Checked out main; activation: nix develop
+[runs mw go auth-service]
+Checked out main at ~/Developer/.../auth-service/main
 ```
-
-## Adding new tools
-
-The server lives in `crates/mw-mcp/src/`. New tools go in
-`tools.rs` (handler) and are listed in `server.rs` (`tools/list`). Each
-handler is a small dispatcher into `mw-core`, so adding new functionality is
-typically a 30-line patch.

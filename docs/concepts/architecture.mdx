@@ -1,26 +1,40 @@
 ---
 title: "Architecture"
-description: "How Makework is organized: crates, data files, and the bare-clone-plus-worktree split."
-keywords: ["architecture", "design", "crates", "workspace"]
+description: "How Makework is organized: packages, data files, and the bare-clone-plus-worktree split."
+keywords: ["architecture", "design", "packages", "module"]
 ---
 
-Makework is a Cargo workspace with three crates and a small set of files on
-disk. Knowing the layout helps you debug, contribute, or extend it.
+Makework is a single Go module with internal packages and a small set of files
+on disk. Knowing the layout helps you debug, contribute, or extend it.
 
-## Workspace layout
+## Module layout
 
 ```
 Makework/
-├── crates/
-│   ├── mw-core/   # library: catalog, worktree, resolver, nix detection, ...
-│   ├── mw-cli/    # binary: mw — clap dispatch, output formatting
-│   └── mw-mcp/    # binary feature: Model Context Protocol server
-├── editors/emacs/ # makework.el integration package
-└── docs/          # Mintlify documentation site
+├── cmd/mw/           # binary entry point
+├── internal/
+│   ├── cli/          # Cobra CLI definitions and dispatch
+│   ├── config/       # config.toml loading and management
+│   ├── catalog/      # repo registry, sync, add, resolution
+│   ├── resolver/     # weighted fuzzy project resolution
+│   ├── worktree/     # git worktree path computation, creation, listing
+│   ├── repo/         # git shell-out wrappers and URL parsing
+│   ├── nix/          # nix environment detection
+│   ├── project/      # per-project .makework.toml schema
+│   ├── status/       # worktree status and caching
+│   ├── search/       # grep across worktrees
+│   ├── query/        # git log activity queries
+│   ├── template/     # template file application
+│   ├── maintenance/  # git maintenance registration
+│   ├── xdgpath/      # XDG directory resolution
+│   └── buildinfo/    # version info via ldflags
+├── editors/emacs/    # makework.el integration package
+└── docs/             # Mintlify documentation site
 ```
 
-`mw-core` holds all logic and is the only crate with non-trivial code. `mw-cli`
-is a thin clap dispatcher; `mw-mcp` exposes the same operations over JSON-RPC.
+All logic lives in `internal/` packages. `cmd/mw` is a trivial main that calls
+`cli.Execute()`. The Claude Code skill (`mw ai init`) replaces the former MCP
+server for AI assistant integration.
 
 ## Data on disk
 
@@ -66,15 +80,15 @@ This means:
 
 ## Where each command lives
 
-| Subcommand           | Module                              |
-|----------------------|-------------------------------------|
-| `go`, `new`, `rm`, `ls` | `mw-core::worktree`              |
-| `catalog *`, `sync`  | `mw-core::catalog`                  |
-| `config *`           | `mw-core::config`                   |
-| `fetch`              | `mw-core::repository`               |
-| `search` (alias `grep`) | `mw-core::search`                |
-| `query`              | `mw-core::query`                    |
-| `project *`          | `mw-core::project`                  |
-| `maintenance *`      | `mw-core::maintenance`              |
-| `resolver explain`   | `mw-core::resolver`                 |
-| `mcp`                | `mw-mcp::server`                    |
+| Subcommand              | Package                  |
+|-------------------------|--------------------------|
+| `go`, `new`, `rm`, `ls` | `internal/worktree`     |
+| `catalog *`, `sync`     | `internal/catalog`      |
+| `config *`              | `internal/config`       |
+| `fetch`                 | `internal/repo`         |
+| `search`                | `internal/search`       |
+| `query`                 | `internal/query`        |
+| `project *`             | `internal/project`      |
+| `maintenance *`         | `internal/maintenance`  |
+| `resolver explain`      | `internal/resolver`     |
+| `ai init`               | `internal/cli`          |

@@ -1,16 +1,16 @@
 ---
 title: "Installation"
-description: "Build and install the Makework CLI from source using devenv or stock cargo."
-keywords: ["install", "setup", "devenv", "cargo", "nix"]
+description: "Build and install the Makework CLI from source using devenv or go install."
+keywords: ["install", "setup", "devenv", "go", "nix"]
 ---
 
-Makework is a Rust workspace targeting edition 2024. You can build it with
-[devenv](https://devenv.sh) (recommended) or with a stock stable toolchain.
+Makework is a Go module (Go 1.23+). You can build it with
+[devenv](https://devenv.sh) (recommended) or with a stock Go toolchain.
 
 ## With devenv
 
-`devenv.nix` is checked in and pins the Rust toolchain plus dev tooling
-(`cargo-mutants`, `treefmt`).
+`devenv.nix` is checked in and pins the Go toolchain plus dev tooling
+(`golangci-lint`, `treefmt`).
 
 <Steps>
   <Step title="Enter the dev shell">
@@ -20,7 +20,7 @@ Makework is a Rust workspace targeting edition 2024. You can build it with
   </Step>
   <Step title="Build and install the binary">
     ```sh
-    cargo install --path crates/mw-cli
+    go build -o $GOPATH/bin/mw ./cmd/mw
     ```
 
     The binary is named `mw`. Confirm it's on your `PATH`:
@@ -31,13 +31,18 @@ Makework is a Rust workspace targeting edition 2024. You can build it with
   </Step>
 </Steps>
 
-## With cargo only
+## With go install
 
-If you'd rather use your existing Rust toolchain, install stable Rust 1.85+
-(needed for edition 2024) and run:
+If you'd rather use your existing Go toolchain, install Go 1.23+ and run:
 
 ```sh
-cargo install --path crates/mw-cli
+go install github.com/jylhis/makework/cmd/mw@latest
+```
+
+Or from a local clone:
+
+```sh
+go build -o $GOPATH/bin/mw ./cmd/mw
 ```
 
 ## Verify the install
@@ -67,7 +72,7 @@ under `$XDG_DATA_HOME/makework`.
 ## Uninstall
 
 ```sh
-cargo uninstall mw-cli
+rm $(which mw)
 rm -rf ~/.config/makework ~/.local/share/makework ~/.local/state/makework
 ```
 
