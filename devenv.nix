@@ -18,6 +18,10 @@ in
   packages = [
     pkgs.cargo-mutants
     pkgs.just
+    pkgs.golangci-lint
+    pkgs.gopls
+    pkgs.go-tools
+    pkgs.delve
   ];
 
   outputs = {
@@ -51,6 +55,8 @@ in
     channel = "stable";
   };
 
+  languages.go.enable = true;
+
   treefmt = {
     enable = true;
     config.programs = import ./nix/treefmt.nix;
@@ -62,22 +68,28 @@ in
   enterTest = ''
     set -euo pipefail
 
-    echo "1/5: cargo is available"
+    echo "1/7: cargo is available"
     cargo --version
 
-    echo "2/5: rustc is available and reports a stable version"
+    echo "2/7: rustc is available and reports a stable version"
     rustc --version | grep -v nightly
 
-    echo "3/5: cargo-mutants is installed"
+    echo "3/7: cargo-mutants is installed"
     cargo mutants --version
 
-    echo "4/5: treefmt is available"
+    echo "4/7: go is available"
+    go version
+
+    echo "5/7: golangci-lint is available"
+    golangci-lint --version
+
+    echo "6/7: treefmt is available"
     treefmt --version
 
-    echo "5/5: DEVENV_ROOT is exported and points at this repo"
+    echo "7/7: DEVENV_ROOT is exported and points at this repo"
     test -n "''${DEVENV_ROOT:-}"
     test -f "$DEVENV_ROOT/Cargo.toml"
 
-    echo "All 5 dev environment checks passed."
+    echo "All 7 dev environment checks passed."
   '';
 }

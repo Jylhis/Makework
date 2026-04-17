@@ -3,4 +3,5 @@
 {
   nixfmt.enable = true;
   rustfmt.enable = true;
+  gofmt.enable = true;
 }

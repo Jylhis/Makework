@@ -13,7 +13,7 @@ build-legacy:
 check:
     nix flake check
 
-# Format all code (Nix + Rust)
+# Format all code (Nix + Rust + Go)
 fmt:
     nix fmt
 
@@ -75,3 +75,20 @@ test:
 # Lint with clippy
 lint:
     cargo clippy --all-targets -- -D warnings
+
+# Run go tests (coexists with Rust during port)
+go-test:
+    go test -race ./...
+
+# Lint Go code with golangci-lint
+go-lint:
+    golangci-lint run
+
+# Build the Go binary
+go-build:
+    go build -o result-go/mw ./cmd/mw
+
+# Generate Go coverage report
+go-cover:
+    go test -coverprofile=coverage.out ./...
+    go tool cover -html=coverage.out
