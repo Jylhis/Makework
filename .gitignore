@@ -40,3 +40,8 @@ test-space/
 
 # Added by cargo
 /target
+
+# Go
+/mw
+coverage.out
+vendor/
