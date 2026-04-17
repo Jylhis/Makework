@@ -1,15 +1,21 @@
 package cli
 
-import "github.com/spf13/cobra"
+import (
+	"fmt"
+
+	"github.com/spf13/cobra"
+)
 
 func newMcpCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "mcp",
-		Short: "Start MCP (Model Context Protocol) server on stdio",
-		Args:  cobra.NoArgs,
+	return silenceSubcommand(&cobra.Command{
+		Use:    "mcp",
+		Short:  "MCP server (deprecated — use Claude Code skills instead)",
+		Hidden: true,
+		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return notImplemented("mcp")
+			fmt.Fprintln(cmd.ErrOrStderr(), "The MCP server has been replaced by Claude Code skills.")
+			fmt.Fprintln(cmd.ErrOrStderr(), "See .claude/skills/makework.md for the skill definition.")
+			return fmt.Errorf("mcp server removed; use Claude Code skills instead")
 		},
-	}
-	return silenceSubcommand(cmd)
+	})
 }
