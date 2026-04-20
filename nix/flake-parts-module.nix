@@ -6,6 +6,7 @@
 #
 #   perSystem = { ... }: {
 #     makework.enable = true;
+#     makework.settings.worktree_root = "/home/user/wt";
 #   };
 {
   self,
@@ -25,32 +26,12 @@ in
       ...
     }:
     let
+      common = import ./modules/common.nix { inherit lib pkgs; };
       cfg = config.makework;
     in
     {
-      options.makework = {
-        enable = lib.mkEnableOption "makework in the devshell";
-
-        package = lib.mkOption {
-          type = lib.types.package;
-          default = self.packages.${system}.default;
-          defaultText = lib.literalExpression "self.packages.\${system}.default";
-          description = "The makework package to use.";
-        };
-
-        settings = {
-          worktree_root = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "Default root directory for worktrees.";
-          };
-
-          bare_root = lib.mkOption {
-            type = lib.types.nullOr lib.types.str;
-            default = null;
-            description = "Default root directory for bare clones.";
-          };
-        };
+      options.makework = common.mkOptions {
+        defaultPackage = self.packages.${system}.default;
       };
 
       config = lib.mkIf cfg.enable {
