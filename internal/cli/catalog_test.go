@@ -102,6 +102,14 @@ func TestConfigSetAndShow(t *testing.T) {
 	}
 }
 
+func TestConfigUnknownSubcommandErrors(t *testing.T) {
+	setupIsolatedEnv(t)
+	_, err := captureOutput(t, "config", "nonsense")
+	if err == nil {
+		t.Fatal("expected error for unknown config subcommand, got nil")
+	}
+}
+
 func TestVersionFlag(t *testing.T) {
 	out, err := captureOutput(t, "--version")
 	if err != nil {
