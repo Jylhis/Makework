@@ -78,11 +78,25 @@
                 && echo "flake-parts module evaluation: OK" \
                 && touch $out
             '';
+
+          moduleChecks = import ./nix/tests/module-eval.nix { inherit self pkgs; };
         in
-        appChecks // { inherit flake-parts-module-eval; }
+        appChecks
+        // {
+          inherit flake-parts-module-eval;
+          home-manager-module-eval = moduleChecks.home-manager-eval;
+          nixos-module-eval = moduleChecks.nixos-eval;
+          darwin-module-eval = moduleChecks.darwin-eval;
+          nix-on-droid-module-eval = moduleChecks.nix-on-droid-eval;
+        }
       );
 
       flakeModules.default = import ./nix/flake-parts-module.nix;
+
+      nixosModules.default = import ./nix/modules/nixos.nix { inherit self; };
+      darwinModules.default = import ./nix/modules/darwin.nix { inherit self; };
+      homeManagerModules.default = import ./nix/modules/home-manager.nix { inherit self; };
+      nixOnDroidModules.default = import ./nix/modules/nix-on-droid.nix { inherit self; };
 
       formatter = forAllSystems (
         system:
