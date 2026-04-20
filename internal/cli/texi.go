@@ -68,7 +68,7 @@ Makework is an opinionated git worktree manager.
 func writeTexiCommand(b *strings.Builder, cmd *cobra.Command) {
 	name := cmd.Name()
 	fmt.Fprintf(b, "@node %s\n", name)
-	fmt.Fprintf(b, "@section %s\n\n", name)
+	fmt.Fprintf(b, "@chapter %s\n\n", name)
 	fmt.Fprintf(b, "@code{mw %s}\n\n", cmd.UseLine())
 	if cmd.Long != "" {
 		b.WriteString(texiEscape(cmd.Long))
@@ -82,7 +82,7 @@ func writeTexiCommand(b *strings.Builder, cmd *cobra.Command) {
 			if sub.Hidden {
 				continue
 			}
-			fmt.Fprintf(b, "@subsection %s %s\n\n", name, sub.Name())
+			fmt.Fprintf(b, "@section %s %s\n\n", name, sub.Name())
 			fmt.Fprintf(b, "@code{mw %s %s}\n\n", name, sub.UseLine())
 			desc := sub.Short
 			if sub.Long != "" {
