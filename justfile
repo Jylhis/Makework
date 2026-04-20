@@ -75,6 +75,16 @@ test:
 lint:
     golangci-lint run
 
+# Update Go dependencies
+deps-update:
+    go get -u ./...
+    go mod tidy
+
+# Update a specific Go dependency (usage: just deps-get github.com/foo/bar@latest)
+deps-get pkg:
+    go get {{pkg}}
+    go mod tidy
+
 # Generate Go coverage report
 cover:
     go test -coverprofile=coverage.out ./...
