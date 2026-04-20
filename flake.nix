@@ -38,13 +38,13 @@
       packages = forAllSystems (
         system:
         let
-          makework = import ./nix/package.nix {
-            pkgs = nixpkgs.legacyPackages.${system};
-          };
+          pkgs = nixpkgs.legacyPackages.${system};
+          makework = import ./nix/package.nix { inherit pkgs; };
+          docs = import ./nix/docs/options.nix { inherit pkgs self; };
         in
         {
           default = makework;
-          inherit makework;
+          inherit makework docs;
         }
       );
 

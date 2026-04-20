@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>makework — module options</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>makework</h1>
+      <p class="tagline">Opinionated git worktree manager.</p>
+
+      <p>
+        This site documents the <code>programs.makework</code> option set
+        exposed by each module variant. Pick the context that matches how
+        you consume the flake.
+      </p>
+
+      <ul class="contexts">
+        <li><a href="home-manager.html">home-manager</a> — per-user install, config.toml, shell hook</li>
+        <li><a href="nixos.html">NixOS</a> — system-wide install, shell hook on /etc/bashrc &amp; /etc/zshrc</li>
+        <li><a href="darwin.html">nix-darwin</a> — macOS equivalent of the NixOS module</li>
+        <li><a href="nix-on-droid.html">nix-on-droid</a> — Android install (use home-manager inside for config/hook)</li>
+      </ul>
+
+      <h2>Flake wiring</h2>
+      <pre><code>inputs.makework.url = "github:jylhis/makework";
+
+# NixOS host
+imports = [ inputs.makework.nixosModules.default ];
+programs.makework.enable = true;
+
+# home-manager
+home.sharedModules = [ inputs.makework.homeManagerModules.default ];
+programs.makework = {
+  enable = true;
+  settings.worktree_root = "/home/alice/code/worktrees";
+};
+</code></pre>
+
+      <p class="foot">
+        Source:
+        <a href="https://github.com/jylhis/makework">github.com/jylhis/makework</a>
+      </p>
+    </main>
+  </body>
+</html>
