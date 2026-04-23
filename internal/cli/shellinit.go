@@ -16,19 +16,9 @@ func newInitCmd() *cobra.Command {
 			out := cmd.OutOrStdout()
 			switch args[0] {
 			case "zsh":
-				fmt.Fprint(out, `# Add to your .zshrc:
-_makework_hook() {
-  command mw visit "$PWD" 2>/dev/null &!
-}
-chpwd_functions+=(_makework_hook)
-`)
+				fmt.Fprint(out, zshHook)
 			case "bash":
-				fmt.Fprint(out, `# Add to your .bashrc:
-_makework_hook() {
-  command mw visit "$PWD" 2>/dev/null &
-}
-PROMPT_COMMAND="_makework_hook;${PROMPT_COMMAND}"
-`)
+				fmt.Fprint(out, bashHook)
 			default:
 				return fmt.Errorf("unsupported shell: %s (supported: zsh, bash)", args[0])
 			}
@@ -36,3 +26,25 @@ PROMPT_COMMAND="_makework_hook;${PROMPT_COMMAND}"
 		},
 	})
 }
+
+// add-zsh-hook handles idempotency: re-sourcing .zshrc won't register the
+// hook twice.
+const zshHook = `# Add to your .zshrc:
+_makework_hook() {
+  command mw visit "$PWD" 2>/dev/null &!
+}
+autoload -Uz add-zsh-hook
+add-zsh-hook chpwd _makework_hook
+`
+
+// Bash has no equivalent to add-zsh-hook; use a sentinel variable so
+// re-sourcing .bashrc doesn't duplicate the PROMPT_COMMAND entry.
+const bashHook = `# Add to your .bashrc:
+_makework_hook() {
+  command mw visit "$PWD" 2>/dev/null &
+}
+if [ -z "${_MAKEWORK_HOOK_INSTALLED:-}" ]; then
+  _MAKEWORK_HOOK_INSTALLED=1
+  PROMPT_COMMAND="_makework_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+fi
+`
