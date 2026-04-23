@@ -75,6 +75,84 @@ func TestCatalogListEmpty(t *testing.T) {
 	}
 }
 
+// initSourceRepo lays out a throwaway git repo with a single empty commit.
+// Used by catalog add/remove tests that need a real clone source.
+func initSourceRepo(t *testing.T, home, name string) string {
+	t.Helper()
+	src := filepath.Join(home, name)
+	mustMkdir(t, src)
+	runGit(t, src, "init", "-q", "-b", "main")
+	runGit(t, src, "-c", "user.name=t", "-c", "user.email=t@t",
+		"commit", "-q", "--allow-empty", "-m", "init")
+	return src
+}
+
+func TestCatalogAddWritesRepoRootsCache(t *testing.T) {
+	home := setupIsolatedEnv(t)
+	if _, err := captureOutput(t, "catalog", "init"); err != nil {
+		t.Fatalf("catalog init: %v", err)
+	}
+	src := initSourceRepo(t, home, "source-repo")
+
+	if out, err := captureOutput(t, "catalog", "add", src); err != nil {
+		t.Fatalf("catalog add: %v (out: %s)", err, out)
+	}
+
+	cachePath := filepath.Join(home, ".local", "state", "makework", "repo-roots.txt")
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("repo-roots.txt should exist after catalog add: %v", err)
+	}
+	if !bytes.Contains(data, []byte("source-repo.git")) {
+		t.Errorf("expected source-repo.git bare path in cache, got %q", data)
+	}
+}
+
+func TestCatalogRemoveUpdatesRepoRootsCache(t *testing.T) {
+	home := setupIsolatedEnv(t)
+	if _, err := captureOutput(t, "catalog", "init"); err != nil {
+		t.Fatalf("catalog init: %v", err)
+	}
+	src := initSourceRepo(t, home, "source-repo")
+	if _, err := captureOutput(t, "catalog", "add", src); err != nil {
+		t.Fatalf("catalog add: %v", err)
+	}
+	if _, err := captureOutput(t, "catalog", "remove", "source-repo"); err != nil {
+		t.Fatalf("catalog remove: %v", err)
+	}
+
+	cachePath := filepath.Join(home, ".local", "state", "makework", "repo-roots.txt")
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("repo-roots.txt should still exist after remove: %v", err)
+	}
+	if bytes.Contains(data, []byte("source-repo.git")) {
+		t.Errorf("expected source-repo.git purged from cache, got %q", data)
+	}
+}
+
+func TestCatalogPurgeUpdatesRepoRootsCache(t *testing.T) {
+	home := setupIsolatedEnv(t)
+	if _, err := captureOutput(t, "catalog", "init"); err != nil {
+		t.Fatalf("catalog init: %v", err)
+	}
+	src := initSourceRepo(t, home, "source-repo")
+	if _, err := captureOutput(t, "catalog", "add", src); err != nil {
+		t.Fatalf("catalog add: %v", err)
+	}
+	if _, err := captureOutput(t, "catalog", "purge", "source-repo"); err != nil {
+		t.Fatalf("catalog purge: %v", err)
+	}
+	cachePath := filepath.Join(home, ".local", "state", "makework", "repo-roots.txt")
+	data, err := os.ReadFile(cachePath)
+	if err != nil {
+		t.Fatalf("repo-roots.txt should still exist after purge: %v", err)
+	}
+	if bytes.Contains(data, []byte("source-repo.git")) {
+		t.Errorf("expected source-repo.git purged from cache, got %q", data)
+	}
+}
+
 func TestConfigShowDefaults(t *testing.T) {
 	setupIsolatedEnv(t)
 	out, err := captureOutput(t, "config", "show")

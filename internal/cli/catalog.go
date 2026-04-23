@@ -73,6 +73,7 @@ func newCatalogAdd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			writeRepoRootsCache(cat)
 			if isNew {
 				fmt.Fprintf(cmd.OutOrStdout(), "Registered repository: %s\n", name)
 			} else {
@@ -149,6 +150,7 @@ func newCatalogRemove() *cobra.Command {
 				return err
 			}
 			_ = cfg // used for save inside Remove
+			writeRepoRootsCache(cat)
 			fmt.Fprintf(cmd.OutOrStdout(), "Removed catalog entry: %s\n", name)
 			return nil
 		},
@@ -205,6 +207,7 @@ func newCatalogPurge() *cobra.Command {
 			if err := cat.Save(); err != nil {
 				return err
 			}
+			writeRepoRootsCache(cat)
 			fmt.Fprintf(cmd.OutOrStdout(), "Purged: %s\n", name)
 			return nil
 		},
