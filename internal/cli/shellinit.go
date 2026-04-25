@@ -41,7 +41,7 @@ add-zsh-hook chpwd _makework_hook
 // re-sourcing .bashrc doesn't duplicate the PROMPT_COMMAND entry.
 const bashHook = `# Add to your .bashrc:
 _makework_hook() {
-  command mw visit "$PWD" 2>/dev/null &
+  command mw visit "$PWD" 2>/dev/null & disown
 }
 if [ -z "${_MAKEWORK_HOOK_INSTALLED:-}" ]; then
   _MAKEWORK_HOOK_INSTALLED=1
