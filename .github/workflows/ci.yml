@@ -2,17 +2,59 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  devenv:
-    name: devenv test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+  go-lint:
+    name: Go Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          args: --output.checkstyle.path=golangci-report.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: golangci-report
+          path: golangci-report.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  go-test:
+    name: Go Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+          retention-days: 7
+
+  lock-verify:
+    name: Verify lock sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - run: nix run nixpkgs#just -- verify
+
+  nix-build-linux:
+    name: nix build (x86_64-linux)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: cachix/install-nix-action@v31
@@ -20,22 +62,16 @@ jobs:
         with:
           name: jylhis
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Install devenv
-        run: nix profile add nixpkgs#devenv
-      - name: Verify flake.lock and devenv.lock are in sync
-        run: nix run nixpkgs#just -- verify
-      - name: Run devenv tests
-        run: devenv test
+      - run: nix build .#packages.x86_64-linux.default
 
-  nix-build:
+  nix-build-cross:
     name: nix build (${{ matrix.system }})
+    if: github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            system: x86_64-linux
           - os: ubuntu-24.04-arm
             system: aarch64-linux
           - os: macos-15-intel
@@ -49,35 +85,61 @@ jobs:
         with:
           name: jylhis
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - name: Build package
-        run: nix build .#packages.${{ matrix.system }}.default
+      - run: nix build .#packages.${{ matrix.system }}.default
 
-  go-lint:
-    name: Go Lint
+  devenv-test-linux:
+    name: devenv test (ubuntu-latest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v16
         with:
-          go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v7
+          name: jylhis
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
+      - name: Run devenv tests
+        run: devenv test
 
-  go-test:
-    name: Go Test
+  devenv-test-macos:
+    name: devenv test (macos-latest)
+    if: github.event_name == 'push'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+      - uses: cachix/cachix-action@v16
+        with:
+          name: jylhis
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Install devenv
+        run: nix profile add nixpkgs#devenv
+      - name: Run devenv tests
+        run: devenv test
+
+  sonarqube:
+    name: SonarQube
+    needs: [go-lint, go-test]
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v5
         with:
-          go-version-file: go.mod
-      - run: go test -race -cover ./...
-
-  go-build:
-    name: Go Build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
         with:
-          go-version-file: go.mod
-      - run: go build ./...
+          name: coverage
+      - uses: actions/download-artifact@v4
+        with:
+          name: golangci-report
+        continue-on-error: true
+      - name: Extract version
+        id: go_version
+        run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v6
+        with:
+          args: -Dsonar.projectVersion=${{ steps.go_version.outputs.version }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
