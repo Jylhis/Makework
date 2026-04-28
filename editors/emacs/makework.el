@@ -118,10 +118,10 @@ Returns a list of (repo-name . ((branch . status-line) ...))."
 
 ;;;###autoload
 (defun makework-sync ()
-  "Run `mw sync' and display results."
+  "Run `mw repo sync' and display results."
   (interactive)
   (let* ((cmd (mapconcat #'shell-quote-argument
-                         (makework--build-command "sync")
+                         (makework--build-command "repo" "sync")
                          " "))
          (output (shell-command-to-string cmd)))
     (message "%s" (string-trim output))))

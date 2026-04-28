@@ -7,11 +7,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newNewCmd() *cobra.Command {
+func newSwitchCmd() *cobra.Command {
 	var createBranch bool
 	var baseBranch string
 	cmd := &cobra.Command{
-		Use:   "new <project> <ref>",
+		Use:   "switch <project> <ref>",
 		Short: "Create a new worktree",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {

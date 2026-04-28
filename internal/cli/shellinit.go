@@ -3,33 +3,75 @@ package cli
 import (
 	"fmt"
 
+	"github.com/jylhis/makework/internal/catalog"
 	"github.com/spf13/cobra"
 )
 
 func newInitCmd() *cobra.Command {
 	return silenceSubcommand(&cobra.Command{
-		Use:       "init <shell>",
-		Short:     "Generate shell hook for visit tracking",
-		Args:      cobra.ExactArgs(1),
-		ValidArgs: []string{"zsh", "bash"},
+		Use:       "init [shell]",
+		Short:     "Initialize makework or generate shell integration",
+		Long:      "Without arguments: create config, catalog, and state directories.\nWith a shell argument: output shell completions and visit-tracking hook.",
+		Args:      cobra.MaximumNArgs(1),
+		ValidArgs: []string{"zsh", "bash", "fish", "powershell"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			out := cmd.OutOrStdout()
-			switch args[0] {
-			case "zsh":
-				fmt.Fprint(out, zshHook)
-			case "bash":
-				fmt.Fprint(out, bashHook)
-			default:
-				return fmt.Errorf("unsupported shell: %s (supported: zsh, bash)", args[0])
+			if len(args) == 0 {
+				return runCatalogInit(cmd)
 			}
-			return nil
+			return runShellInit(cmd, args[0])
 		},
 	})
 }
 
+func runCatalogInit(cmd *cobra.Command) error {
+	cfg := loadConfig()
+	result, err := catalog.Init(cfg)
+	if err != nil {
+		return err
+	}
+	out := cmd.OutOrStdout()
+	if len(result.Created) == 0 {
+		fmt.Fprintln(out, "Already initialized. Nothing to do.")
+	} else {
+		fmt.Fprintln(out, "Initialized makework:")
+		for _, p := range result.Created {
+			fmt.Fprintf(out, "  created %s\n", p)
+		}
+	}
+	for _, p := range result.AlreadyExisted {
+		fmt.Fprintf(out, "  exists  %s\n", p)
+	}
+	return nil
+}
+
+func runShellInit(cmd *cobra.Command, shell string) error {
+	out := cmd.OutOrStdout()
+	root := cmd.Root()
+
+	// Output completions
+	if err := generateCompletionStdout(root, shell, out); err != nil {
+		return fmt.Errorf("generating completions for %s: %w", shell, err)
+	}
+
+	// Output visit-tracking hook
+	switch shell {
+	case "zsh":
+		fmt.Fprint(out, zshHook)
+	case "bash":
+		fmt.Fprint(out, bashHook)
+	case "fish", "powershell":
+		// Visit hooks not yet implemented for these shells;
+		// completions are still output above.
+	default:
+		return fmt.Errorf("unsupported shell: %s (supported: zsh, bash, fish, powershell)", shell)
+	}
+	return nil
+}
+
 // add-zsh-hook handles idempotency: re-sourcing .zshrc won't register the
 // hook twice.
-const zshHook = `# Add to your .zshrc:
+const zshHook = `
+# makework visit tracking
 _makework_hook() {
   command mw visit "$PWD" 2>/dev/null &!
 }
@@ -39,7 +81,8 @@ add-zsh-hook chpwd _makework_hook
 
 // Bash has no equivalent to add-zsh-hook; use a sentinel variable so
 // re-sourcing .bashrc doesn't duplicate the PROMPT_COMMAND entry.
-const bashHook = `# Add to your .bashrc:
+const bashHook = `
+# makework visit tracking
 _makework_hook() {
   command mw visit "$PWD" 2>/dev/null & disown
 }

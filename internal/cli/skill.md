@@ -1,6 +1,6 @@
 ---
 name: makework
-description: Manage git worktrees, project catalogs, and repository discovery with the mw CLI. Use when navigating projects, syncing repositories, checking worktree status, or managing the catalog.
+description: Manage git worktrees, project catalogs, and repository discovery with the mw CLI. Use when navigating projects, syncing repositories, checking worktree status, or managing repos.
 ---
 
 # Makework — Git Worktree Manager
@@ -22,15 +22,15 @@ mw go <project> [ref]
 ## Discover and register repositories
 
 ```bash
-mw sync [--depth N] [--exclude pattern]
+mw repo sync [--depth N] [--exclude pattern]
 ```
 
-Scans configured `scan_roots` (or `~/Developer` by default) for git repos and registers them in the catalog.
+Scans configured `scan_roots` (or `~/Developer` by default) for git repos and registers them.
 
 ## Register a specific repository
 
 ```bash
-mw catalog add <source>
+mw repo add <source>
 ```
 
 `source` can be a local path or a git URL (https://, git@, ssh://).
@@ -43,10 +43,10 @@ mw fetch [project]
 
 Fetches all refs for all repos, or a specific one.
 
-## List catalog
+## List repos
 
 ```bash
-mw catalog list
+mw repo list
 ```
 
 Shows all registered repos with URL, branch, and worktree count.
@@ -57,7 +57,7 @@ Shows all registered repos with URL, branch, and worktree count.
 mw ls
 ```
 
-Lists all active worktrees across repos with branch names. Use `--prune` to clean orphaned entries.
+Lists all active worktrees across repos with branch names.
 
 ## Other useful commands
 
@@ -66,8 +66,9 @@ mw config show              # show effective config
 mw config set <key> <val>   # set a config value
 mw search <pattern>         # grep across all worktrees
 mw query --since "7 days ago"  # recent git activity
-mw new <project> <ref>      # create a worktree explicitly
+mw switch <project> <ref>   # create a worktree explicitly
 mw rm <project>/<ref>       # remove a worktree
+mw prune                    # clean orphaned worktree entries
 mw resolver explain <query> # debug resolver scoring
 mw project show <name>      # show project metadata
 ```
@@ -81,4 +82,5 @@ mw project show <name>      # show project metadata
 
 ## Initialization
 
-First-time setup: `mw catalog init` creates config dirs, default config, and empty catalog.
+First-time setup: `mw init` creates config dirs, default config, and empty catalog.
+Shell integration: `mw init <shell>` outputs completions and visit-tracking hook.

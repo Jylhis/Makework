@@ -30,7 +30,7 @@ func newVisitCmd() *cobra.Command {
 // resolveVisit maps a filesystem path to a (repoName, branch) pair by asking
 // git for the containing repo's common directory (bare clone for worktrees,
 // `.git` dir otherwise) and matching that against the repo-roots.txt cache
-// written by catalog mutations and `mw sync`.
+// written by catalog mutations and `mw repo sync`.
 //
 // Returns ok=false silently (no error) when the cache is missing, the path
 // is not inside a git repo, or no registered root matches — the shell hook

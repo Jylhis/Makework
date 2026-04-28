@@ -1,4 +1,4 @@
 exec mw ai init
 stdout 'name: makework'
 stdout 'mw go'
-stdout 'mw catalog list'
+stdout 'mw repo list'

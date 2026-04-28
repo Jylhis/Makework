@@ -1,5 +1,5 @@
-exec mw completions bash
+exec mw init bash
 stdout 'complete'
 
-exec mw completions zsh
+exec mw init zsh
 stdout 'compdef'

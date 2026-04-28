@@ -24,12 +24,12 @@ func newRoot() *cobra.Command {
 
 	root.AddCommand(
 		newGoCmd(),
-		newNewCmd(),
+		newSwitchCmd(),
 		newRmCmd(),
 		newLsCmd(),
+		newPruneCmd(),
 		newFetchCmd(),
-		newSyncCmd(),
-		newCatalogCmd(),
+		newRepoCmd(),
 		newProjectCmd(),
 		newMaintenanceCmd(),
 		newConfigCmd(),
@@ -40,7 +40,6 @@ func newRoot() *cobra.Command {
 		newAiCmd(),
 		newInitCmd(),
 		newVisitCmd(),
-		newCompletionsCmd(),
 		newManCmd(),
 		newGenerateTexiCmd(),
 	)

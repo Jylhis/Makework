@@ -31,11 +31,11 @@ func captureOutput(t *testing.T, args ...string) (string, error) {
 	return buf.String(), err
 }
 
-func TestCatalogInitCreatesDirectories(t *testing.T) {
+func TestInitCreatesDirectories(t *testing.T) {
 	home := setupIsolatedEnv(t)
-	out, err := captureOutput(t, "catalog", "init")
+	out, err := captureOutput(t, "init")
 	if err != nil {
-		t.Fatalf("catalog init failed: %v\noutput: %s", err, out)
+		t.Fatalf("init failed: %v\noutput: %s", err, out)
 	}
 
 	// Should have created config dir, config.toml, catalog.toml, bare_root, worktree_root
@@ -48,13 +48,13 @@ func TestCatalogInitCreatesDirectories(t *testing.T) {
 	}
 }
 
-func TestCatalogInitIdempotent(t *testing.T) {
+func TestInitIdempotent(t *testing.T) {
 	setupIsolatedEnv(t)
 	// Run twice — second should not error
-	if _, err := captureOutput(t, "catalog", "init"); err != nil {
+	if _, err := captureOutput(t, "init"); err != nil {
 		t.Fatalf("first init: %v", err)
 	}
-	out, err := captureOutput(t, "catalog", "init")
+	out, err := captureOutput(t, "init")
 	if err != nil {
 		t.Fatalf("second init: %v", err)
 	}
@@ -63,20 +63,20 @@ func TestCatalogInitIdempotent(t *testing.T) {
 	}
 }
 
-func TestCatalogListEmpty(t *testing.T) {
+func TestRepoListEmpty(t *testing.T) {
 	setupIsolatedEnv(t)
-	_, _ = captureOutput(t, "catalog", "init")
-	out, err := captureOutput(t, "catalog", "list")
+	_, _ = captureOutput(t, "init")
+	out, err := captureOutput(t, "repo", "list")
 	if err != nil {
-		t.Fatalf("catalog list: %v", err)
+		t.Fatalf("repo list: %v", err)
 	}
 	if out == "" {
-		t.Error("expected output from catalog list")
+		t.Error("expected output from repo list")
 	}
 }
 
 // initSourceRepo lays out a throwaway git repo with a single empty commit.
-// Used by catalog add/remove tests that need a real clone source.
+// Used by repo add/remove tests that need a real clone source.
 func initSourceRepo(t *testing.T, home, name string) string {
 	t.Helper()
 	src := filepath.Join(home, name)
@@ -87,61 +87,61 @@ func initSourceRepo(t *testing.T, home, name string) string {
 	return src
 }
 
-func TestCatalogAddWritesRepoRootsCache(t *testing.T) {
+func TestRepoAddWritesRepoRootsCache(t *testing.T) {
 	home := setupIsolatedEnv(t)
-	if _, err := captureOutput(t, "catalog", "init"); err != nil {
-		t.Fatalf("catalog init: %v", err)
+	if _, err := captureOutput(t, "init"); err != nil {
+		t.Fatalf("init: %v", err)
 	}
 	src := initSourceRepo(t, home, "source-repo")
 
-	if out, err := captureOutput(t, "catalog", "add", src); err != nil {
-		t.Fatalf("catalog add: %v (out: %s)", err, out)
+	if out, err := captureOutput(t, "repo", "add", src); err != nil {
+		t.Fatalf("repo add: %v (out: %s)", err, out)
 	}
 
 	cachePath := filepath.Join(home, ".local", "state", "makework", "repo-roots.txt")
 	data, err := os.ReadFile(cachePath)
 	if err != nil {
-		t.Fatalf("repo-roots.txt should exist after catalog add: %v", err)
+		t.Fatalf("repo-roots.txt should exist after repo add: %v", err)
 	}
 	if !bytes.Contains(data, []byte("source-repo.git")) {
 		t.Errorf("expected source-repo.git bare path in cache, got %q", data)
 	}
 }
 
-func TestCatalogRemoveUpdatesRepoRootsCache(t *testing.T) {
+func TestRepoRmUpdatesRepoRootsCache(t *testing.T) {
 	home := setupIsolatedEnv(t)
-	if _, err := captureOutput(t, "catalog", "init"); err != nil {
-		t.Fatalf("catalog init: %v", err)
+	if _, err := captureOutput(t, "init"); err != nil {
+		t.Fatalf("init: %v", err)
 	}
 	src := initSourceRepo(t, home, "source-repo")
-	if _, err := captureOutput(t, "catalog", "add", src); err != nil {
-		t.Fatalf("catalog add: %v", err)
+	if _, err := captureOutput(t, "repo", "add", src); err != nil {
+		t.Fatalf("repo add: %v", err)
 	}
-	if _, err := captureOutput(t, "catalog", "remove", "source-repo"); err != nil {
-		t.Fatalf("catalog remove: %v", err)
+	if _, err := captureOutput(t, "repo", "rm", "source-repo"); err != nil {
+		t.Fatalf("repo rm: %v", err)
 	}
 
 	cachePath := filepath.Join(home, ".local", "state", "makework", "repo-roots.txt")
 	data, err := os.ReadFile(cachePath)
 	if err != nil {
-		t.Fatalf("repo-roots.txt should still exist after remove: %v", err)
+		t.Fatalf("repo-roots.txt should still exist after rm: %v", err)
 	}
 	if bytes.Contains(data, []byte("source-repo.git")) {
 		t.Errorf("expected source-repo.git purged from cache, got %q", data)
 	}
 }
 
-func TestCatalogPurgeUpdatesRepoRootsCache(t *testing.T) {
+func TestRepoPurgeUpdatesRepoRootsCache(t *testing.T) {
 	home := setupIsolatedEnv(t)
-	if _, err := captureOutput(t, "catalog", "init"); err != nil {
-		t.Fatalf("catalog init: %v", err)
+	if _, err := captureOutput(t, "init"); err != nil {
+		t.Fatalf("init: %v", err)
 	}
 	src := initSourceRepo(t, home, "source-repo")
-	if _, err := captureOutput(t, "catalog", "add", src); err != nil {
-		t.Fatalf("catalog add: %v", err)
+	if _, err := captureOutput(t, "repo", "add", src); err != nil {
+		t.Fatalf("repo add: %v", err)
 	}
-	if _, err := captureOutput(t, "catalog", "purge", "source-repo"); err != nil {
-		t.Fatalf("catalog purge: %v", err)
+	if _, err := captureOutput(t, "repo", "purge", "source-repo"); err != nil {
+		t.Fatalf("repo purge: %v", err)
 	}
 	cachePath := filepath.Join(home, ".local", "state", "makework", "repo-roots.txt")
 	data, err := os.ReadFile(cachePath)
@@ -166,7 +166,7 @@ func TestConfigShowDefaults(t *testing.T) {
 
 func TestConfigSetAndShow(t *testing.T) {
 	home := setupIsolatedEnv(t)
-	_, _ = captureOutput(t, "catalog", "init")
+	_, _ = captureOutput(t, "init")
 	_, err := captureOutput(t, "config", "set", "worktree_root", filepath.Join(home, "custom-wt"))
 	if err != nil {
 		t.Fatalf("config set: %v", err)
@@ -209,8 +209,8 @@ func TestAiInitOutputsSkill(t *testing.T) {
 	if !strings.Contains(out, "mw go") {
 		t.Error("expected 'mw go' command reference in skill output")
 	}
-	if !strings.Contains(out, "mw catalog list") {
-		t.Error("expected 'mw catalog list' in skill output")
+	if !strings.Contains(out, "mw repo list") {
+		t.Error("expected 'mw repo list' in skill output")
 	}
 }
 

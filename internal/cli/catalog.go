@@ -10,50 +10,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newCatalogCmd() *cobra.Command {
+func newRepoCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "catalog",
-		Short: "Manage the repository catalog",
+		Use:   "repo",
+		Short: "Manage repositories",
 	}
 	cmd.AddCommand(
-		newCatalogInit(),
-		newCatalogAdd(),
-		newCatalogList(),
-		newCatalogRemove(),
-		newCatalogEdit(),
-		newCatalogPurge(),
+		newRepoAdd(),
+		newRepoList(),
+		newRepoRm(),
+		newRepoEdit(),
+		newRepoPurge(),
+		newSyncCmd(),
 	)
 	return silenceSubcommand(cmd)
 }
 
-func newCatalogInit() *cobra.Command {
-	return silenceSubcommand(&cobra.Command{
-		Use:   "init",
-		Short: "Create config + state directories and empty catalog",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg := loadConfig()
-			result, err := catalog.Init(cfg)
-			if err != nil {
-				return err
-			}
-			if len(result.Created) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "Already initialized. Nothing to do.")
-			} else {
-				fmt.Fprintln(cmd.OutOrStdout(), "Initialized makework:")
-				for _, p := range result.Created {
-					fmt.Fprintf(cmd.OutOrStdout(), "  created %s\n", p)
-				}
-			}
-			for _, p := range result.AlreadyExisted {
-				fmt.Fprintf(cmd.OutOrStdout(), "  exists  %s\n", p)
-			}
-			return nil
-		},
-	})
-}
-
-func newCatalogAdd() *cobra.Command {
+func newRepoAdd() *cobra.Command {
 	return silenceSubcommand(&cobra.Command{
 		Use:   "add <source>",
 		Short: "Register a repo from a URL or local path",
@@ -84,7 +57,7 @@ func newCatalogAdd() *cobra.Command {
 	})
 }
 
-func newCatalogList() *cobra.Command {
+func newRepoList() *cobra.Command {
 	return silenceSubcommand(&cobra.Command{
 		Use:   "list",
 		Short: "List registered repos",
@@ -117,9 +90,9 @@ func newCatalogList() *cobra.Command {
 	})
 }
 
-func newCatalogRemove() *cobra.Command {
+func newRepoRm() *cobra.Command {
 	return silenceSubcommand(&cobra.Command{
-		Use:   "remove <project>",
+		Use:   "rm <project>",
 		Short: "Unregister a repo",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -157,7 +130,7 @@ func newCatalogRemove() *cobra.Command {
 	})
 }
 
-func newCatalogEdit() *cobra.Command {
+func newRepoEdit() *cobra.Command {
 	return silenceSubcommand(&cobra.Command{
 		Use:   "edit",
 		Short: "Open the catalog file in $EDITOR",
@@ -173,7 +146,7 @@ func newCatalogEdit() *cobra.Command {
 	})
 }
 
-func newCatalogPurge() *cobra.Command {
+func newRepoPurge() *cobra.Command {
 	return silenceSubcommand(&cobra.Command{
 		Use:   "purge <project>",
 		Short: "Remove all worktrees and unregister a repo",

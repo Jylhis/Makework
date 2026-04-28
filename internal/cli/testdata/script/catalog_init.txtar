@@ -3,7 +3,7 @@ env XDG_CONFIG_HOME=$WORK/.config
 env XDG_DATA_HOME=$WORK/.local/share
 env XDG_STATE_HOME=$WORK/.local/state
 
-exec mw catalog init
+exec mw init
 stdout 'Initialized'
 
 # Verify files were created
@@ -11,4 +11,4 @@ exists $WORK/.config/makework/config.toml
 exists $WORK/.config/makework/catalog.toml
 
 # Second init should be idempotent (no error)
-exec mw catalog init
+exec mw init

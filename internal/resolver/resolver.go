@@ -75,7 +75,7 @@ type Index struct {
 
 var (
 	ErrQueryTooShort = errors.New("query too short (minimum 2 characters)")
-	ErrEmptyCatalog  = errors.New("no projects registered; run 'mw sync' or 'mw catalog add' first")
+	ErrEmptyCatalog  = errors.New("no projects registered; run 'mw repo sync' or 'mw repo add' first")
 )
 
 type ErrNoMatches struct{ Query string }
