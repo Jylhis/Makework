@@ -16,6 +16,8 @@ import (
 
 func newGoCmd() *cobra.Command {
 	var list bool
+	var createBranch bool
+	var baseBranch string
 	cmd := &cobra.Command{
 		Use:   "go [project] [ref]",
 		Short: "Navigate to a project worktree (supports fuzzy matching)",
@@ -44,6 +46,10 @@ func newGoCmd() *cobra.Command {
 				refOverride = args[1]
 			}
 
+			if createBranch && refOverride == "" {
+				return fmt.Errorf("-c requires a branch name: mw go <project> <new-branch> -c")
+			}
+
 			parsed, err := resolver.ParseQuery(query)
 			if err != nil {
 				return err
@@ -54,7 +60,7 @@ func newGoCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return navigateToWorktree(cfg, resolved, parsed.Branch, out)
+				return navigateToWorktree(cfg, resolved, parsed.Branch, createBranch, baseBranch, out)
 			}
 
 			// Fast path: exact catalog match
@@ -64,7 +70,7 @@ func newGoCmd() *cobra.Command {
 					if ref == "" {
 						ref = resolved.Repo.MainBranch
 					}
-					return navigateToWorktree(cfg, resolved, ref, out)
+					return navigateToWorktree(cfg, resolved, ref, createBranch, baseBranch, out)
 				}
 			}
 
@@ -126,19 +132,31 @@ func newGoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return navigateToWorktree(cfg, resolved, ref, out)
+			return navigateToWorktree(cfg, resolved, ref, createBranch, baseBranch, out)
 		},
 	}
 	cmd.Flags().BoolVar(&list, "list", false, "Show all matches with scores instead of navigating")
+	cmd.Flags().BoolVarP(&createBranch, "create", "c", false, "Create a new branch for the worktree")
+	cmd.Flags().StringVarP(&baseBranch, "base", "b", "", "Base branch for -c (defaults to repo's main branch)")
 	return silenceSubcommand(cmd)
 }
 
-func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, ref string, out io.Writer) error {
+func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, ref string, createBranch bool, baseBranch string, out io.Writer) error {
 	wtPath := resolvedWorktreePath(cfg, resolved, ref)
 
 	if !fileExistsCli(wtPath) {
-		if err := worktree.Create(resolved.Repo.Path, ref, wtPath); err != nil {
-			return err
+		if createBranch {
+			base := baseBranch
+			if base == "" {
+				base = resolved.Repo.MainBranch
+			}
+			if err := worktree.CreateBranch(resolved.Repo.Path, ref, wtPath, base); err != nil {
+				return err
+			}
+		} else {
+			if err := worktree.Create(resolved.Repo.Path, ref, wtPath); err != nil {
+				return err
+			}
 		}
 	}
 

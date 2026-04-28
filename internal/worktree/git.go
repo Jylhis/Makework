@@ -20,6 +20,13 @@ func Create(barePath, branch, wtPath string) error {
 	return err
 }
 
+// CreateBranch runs `git -C <barePath> worktree add -b <newBranch> <wtPath> <startPoint>`.
+// It creates a new branch from startPoint and checks it out in a new worktree.
+func CreateBranch(barePath, newBranch, wtPath, startPoint string) error {
+	_, err := repo.RunGitCapture("-C", barePath, "worktree", "add", "-b", newBranch, wtPath, startPoint)
+	return err
+}
+
 // Remove runs `git -C <barePath> worktree remove <wtPath>` then prune.
 func Remove(barePath, wtPath string) error {
 	if _, err := repo.RunGitCapture("-C", barePath, "worktree", "remove", wtPath); err != nil {
