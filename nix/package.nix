@@ -39,15 +39,11 @@ pkgs.symlinkJoin {
     makeinfo mw.texi -o mw.info
     install -D -m 0644 mw.info $out/share/info/mw.info
 
-    # Shell completions (packaging mode — no wrapper functions)
-    $out/bin/mw completions bash --output-dir .
-    installShellCompletion --bash mw
-    $out/bin/mw completions zsh --output-dir .
-    installShellCompletion --zsh _mw
-    $out/bin/mw completions fish --output-dir .
-    installShellCompletion --fish mw.fish
-    $out/bin/mw completions powershell --output-dir .
-    install -D -m 0644 mw.ps1 $out/share/powershell/mw.ps1
+    # Shell completions
+    installShellCompletion --cmd mw \
+      --bash <($out/bin/mw completion bash) \
+      --zsh  <($out/bin/mw completion zsh) \
+      --fish <($out/bin/mw completion fish)
 
     # Shell init hook snippets — modules source these so hook bodies
     # stay defined once in the Go binary (internal/cli/shellinit.go).

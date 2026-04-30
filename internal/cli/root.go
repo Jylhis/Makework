@@ -18,7 +18,7 @@ func newRoot() *cobra.Command {
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		CompletionOptions: cobra.CompletionOptions{
-			DisableDefaultCmd: true,
+			HiddenDefaultCmd: true,
 		},
 	}
 
