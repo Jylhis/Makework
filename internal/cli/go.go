@@ -115,18 +115,16 @@ func newGoCmd() *cobra.Command {
 			}
 
 			top := results[0]
-			ref := refOverride
-			if ref == "" {
-				ref = top.Branch
-				if ref == "" {
-					ref = "main"
-				}
+			branch := top.Branch
+			if branch == "" {
+				branch = "main"
 			}
-			resolved, err := cat.FindProjectUnambiguous(top.RepoName)
-			if err != nil {
-				return err
-			}
-			return navigateToWorktree(cfg, resolved, ref, out)
+			fmt.Fprintf(errOut,
+				"Refusing to auto-navigate on fuzzy match '%s' (top match: %s@%s, score %.3f).\n",
+				query, top.RepoName, branch, top.Score,
+			)
+			fmt.Fprintf(errOut, "Run 'mw go %s@%s' to confirm.\n", top.RepoName, branch)
+			return fmt.Errorf("confirmation required for fuzzy match")
 		},
 	}
 	cmd.Flags().BoolVar(&list, "list", false, "Show all matches with scores instead of navigating")
