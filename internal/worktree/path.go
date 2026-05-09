@@ -39,16 +39,26 @@ func Path(worktreeRoot string, parsedURL *repo.ParsedURL, repoName, branch strin
 // is not under bareRoot.
 func ParentDir(worktreeRoot, bareRoot, barePath string) string {
 	rel, err := filepath.Rel(bareRoot, barePath)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return ""
 	}
-	base := filepath.Base(rel)
+	cleanRel := filepath.Clean(rel)
+	if cleanRel == ".." || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	base := filepath.Base(cleanRel)
 	stem := strings.TrimSuffix(base, ".git")
-	parent := filepath.Dir(rel)
+	parent := filepath.Dir(cleanRel)
 	if parent == "." {
 		parent = ""
 	}
-	return filepath.Join(worktreeRoot, parent, stem)
+	candidate := filepath.Join(worktreeRoot, parent, stem)
+	cleanRoot := filepath.Clean(worktreeRoot)
+	cleanCandidate := filepath.Clean(candidate)
+	if cleanCandidate != cleanRoot && !strings.HasPrefix(cleanCandidate, cleanRoot+string(filepath.Separator)) {
+		return ""
+	}
+	return cleanCandidate
 }
 
 // SanitizeBranch converts a ref name into a filesystem-safe path.

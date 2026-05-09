@@ -54,3 +54,17 @@ func TestParsedURLEqual(t *testing.T) {
 		t.Error("different host should not be equal")
 	}
 }
+
+
+func TestParseRemoteURLRejectsTraversalSegments(t *testing.T) {
+	bad := []string{
+		"https://github.com/user/../repo.git",
+		"https://github.com/user/./repo.git",
+		"git@github.com:user/../../repo.git",
+	}
+	for _, u := range bad {
+		if _, ok := ParseRemoteURL(u); ok {
+			t.Errorf("expected %q to fail", u)
+		}
+	}
+}

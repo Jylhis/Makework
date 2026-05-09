@@ -57,6 +57,14 @@ func TestParentDirDotInName(t *testing.T) {
 	}
 }
 
+
+func TestParentDirRejectsEscapingRelative(t *testing.T) {
+	got := ParentDir("/data/worktrees", "/data/repos", "/data/repos/github.com/../../outside/repo.git")
+	if got != "" {
+		t.Errorf("expected empty, got %q", got)
+	}
+}
+
 func TestParentDirNotUnderBareRoot(t *testing.T) {
 	got := ParentDir("/data/worktrees", "/data/repos", "/other/path/repo.git")
 	if got != "" {

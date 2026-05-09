@@ -91,9 +91,10 @@ func parseSCP(rest string) (ParsedURL, bool) {
 func splitPathSegments(path string) []string {
 	var out []string
 	for _, s := range strings.Split(path, "/") {
-		if s != "" {
-			out = append(out, s)
+		if s == "" || s == "." || s == ".." || strings.Contains(s, `\`) {
+			return nil
 		}
+		out = append(out, s)
 	}
 	if len(out) == 0 {
 		return nil
@@ -102,14 +103,10 @@ func splitPathSegments(path string) []string {
 	if stripped := strings.TrimSuffix(last, ".git"); stripped != last {
 		out[len(out)-1] = stripped
 	}
-	// Re-filter in case the strip left an empty segment (".git" alone).
-	filtered := out[:0]
-	for _, s := range out {
-		if s != "" {
-			filtered = append(filtered, s)
-		}
+	if out[len(out)-1] == "" {
+		return nil
 	}
-	return filtered
+	return out
 }
 
 // cut is strings.Cut specialized for a single-character separator.
