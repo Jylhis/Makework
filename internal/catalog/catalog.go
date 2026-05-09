@@ -344,6 +344,9 @@ func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, erro
 	}
 
 	bareDest := barePath(cfg, repoName, hasParsed, &parsed)
+	if !isContainedPath(cfg.BareRoot, bareDest) {
+		return "", false, fmt.Errorf("computed bare path escapes bare root: %s", bareDest)
+	}
 
 	if remoteURL != "" && !fileExists(bareDest) {
 		if err := repo.CloneBare(remoteURL, bareDest); err != nil {
@@ -370,6 +373,9 @@ func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, erro
 		parsedPtr = &parsed
 	}
 	wtPath := worktree.Path(cfg.WorktreeRoot, parsedPtr, repoName, mainBranch)
+	if !isContainedPath(cfg.WorktreeRoot, wtPath) {
+		return "", false, fmt.Errorf("computed worktree path escapes worktree root: %s", wtPath)
+	}
 	if !fileExists(wtPath) {
 		_ = worktree.Create(bareDest, mainBranch, wtPath)
 	}
@@ -413,6 +419,9 @@ func (c *Catalog) AddURL(url string, cfg *config.Config) (string, bool, error) {
 	}
 
 	bareDest := barePath(cfg, repoName, true, &parsed)
+	if !isContainedPath(cfg.BareRoot, bareDest) {
+		return "", false, fmt.Errorf("computed bare path escapes bare root: %s", bareDest)
+	}
 	if !fileExists(bareDest) {
 		if err := repo.CloneBare(url, bareDest); err != nil {
 			return "", false, err
@@ -425,6 +434,9 @@ func (c *Catalog) AddURL(url string, cfg *config.Config) (string, bool, error) {
 	}
 
 	wtPath := worktree.Path(cfg.WorktreeRoot, &parsed, repoName, mainBranch)
+	if !isContainedPath(cfg.WorktreeRoot, wtPath) {
+		return "", false, fmt.Errorf("computed worktree path escapes worktree root: %s", wtPath)
+	}
 	if !fileExists(wtPath) {
 		_ = worktree.Create(bareDest, mainBranch, wtPath)
 	}
@@ -479,6 +491,14 @@ func getOriginURL(dir string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func isContainedPath(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func walkForRepos(dir string, depth uint32, opts SyncOptions) ([]string, error) {

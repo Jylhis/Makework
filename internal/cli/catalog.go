@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/repo"
@@ -161,7 +163,7 @@ func newRepoPurge() *cobra.Command {
 
 			// Remove worktree directories
 			wtParent := worktree.ParentDir(cfg.WorktreeRoot, cfg.BareRoot, r.Path)
-			if wtParent != "" {
+			if wtParent != "" && isContainedPath(cfg.WorktreeRoot, wtParent) {
 				if _, err := os.Stat(wtParent); err == nil {
 					if err := os.RemoveAll(wtParent); err != nil {
 						fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove worktrees at %s: %v\n", wtParent, err)
@@ -170,10 +172,14 @@ func newRepoPurge() *cobra.Command {
 			}
 
 			// Remove bare clone
-			if _, err := os.Stat(r.Path); err == nil {
-				if err := os.RemoveAll(r.Path); err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove bare clone: %v\n", err)
+			if isContainedPath(cfg.BareRoot, r.Path) {
+				if _, err := os.Stat(r.Path); err == nil {
+					if err := os.RemoveAll(r.Path); err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove bare clone: %v\n", err)
+					}
 				}
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: refusing to remove path outside bare_root: %s\n", r.Path)
 			}
 
 			delete(cat.Repos, name)
@@ -190,4 +196,12 @@ func newRepoPurge() *cobra.Command {
 func fileExistsCli(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func isContainedPath(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
