@@ -36,10 +36,10 @@ func Path(worktreeRoot string, parsedURL *repo.ParsedURL, repoName, branch strin
 // worktree parent directory (under worktreeRoot). Strips ".git" suffix from
 // the final component as a string operation (not filepath.Ext) to correctly
 // handle names like "jylhis.com.git" → "jylhis.com". Returns "" if barePath
-// is not under bareRoot.
+// is not under bareRoot, or if the derived candidate escapes worktreeRoot.
 func ParentDir(worktreeRoot, bareRoot, barePath string) string {
 	rel, err := filepath.Rel(bareRoot, barePath)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return ""
 	}
 	base := filepath.Base(rel)
@@ -48,7 +48,12 @@ func ParentDir(worktreeRoot, bareRoot, barePath string) string {
 	if parent == "." {
 		parent = ""
 	}
-	return filepath.Join(worktreeRoot, parent, stem)
+	candidate := filepath.Join(worktreeRoot, parent, stem)
+	relCand, err := filepath.Rel(worktreeRoot, candidate)
+	if err != nil || relCand == ".." || strings.HasPrefix(relCand, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	return candidate
 }
 
 // SanitizeBranch converts a ref name into a filesystem-safe path.

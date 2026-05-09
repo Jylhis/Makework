@@ -21,6 +21,7 @@ func TestParseRemoteURL(t *testing.T) {
 		{"ssh without user", "ssh://github.com/user/repo.git", ParsedURL{Host: "github.com", Segments: []string{"user", "repo"}}, true},
 		{"http", "http://gitlab.internal/group/repo.git", ParsedURL{Host: "gitlab.internal", Segments: []string{"group", "repo"}}, true},
 		{"trims whitespace", "  https://github.com/user/repo.git  ", ParsedURL{Host: "github.com", Segments: []string{"user", "repo"}}, true},
+		{"https with port", "https://gitlab.example.com:8443/group/repo.git", ParsedURL{Host: "gitlab.example.com", Segments: []string{"group", "repo"}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -38,8 +39,16 @@ func TestParseRemoteURL(t *testing.T) {
 func TestParseRemoteURLRejects(t *testing.T) {
 	for _, bad := range []string{
 		"", "   ", "not-a-url", "https://github.com/", "https://github.com",
+		// Lexical traversal attempts via path components.
 		"git@github.com:../repo.git", "git@github.com:org/../../repo.git",
 		"https://../org/repo.git", "https://github.com/org/./repo.git",
+		"https://github.com/../../outside/repo.git",
+		"ssh://git@github.com/../evil.git",
+		// Backslash separator (Windows path traversal).
+		`https://github.com/org\evil/repo.git`,
+		`git@github.com:org\..\evil.git`,
+		// Colon in path segment (NTFS alternate data streams).
+		"https://github.com/org/evil:stream/repo.git",
 	} {
 		if _, ok := ParseRemoteURL(bad); ok {
 			t.Errorf("expected %q to fail", bad)

@@ -344,7 +344,7 @@ func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, erro
 	}
 
 	bareDest := barePath(cfg, repoName, hasParsed, &parsed)
-	if !isContainedPath(cfg.BareRoot, bareDest) {
+	if !IsContainedPath(cfg.BareRoot, bareDest) {
 		return "", false, fmt.Errorf("computed bare path escapes bare root: %s", bareDest)
 	}
 
@@ -373,7 +373,7 @@ func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, erro
 		parsedPtr = &parsed
 	}
 	wtPath := worktree.Path(cfg.WorktreeRoot, parsedPtr, repoName, mainBranch)
-	if !isContainedPath(cfg.WorktreeRoot, wtPath) {
+	if !IsContainedPath(cfg.WorktreeRoot, wtPath) {
 		return "", false, fmt.Errorf("computed worktree path escapes worktree root: %s", wtPath)
 	}
 	if !fileExists(wtPath) {
@@ -419,7 +419,7 @@ func (c *Catalog) AddURL(url string, cfg *config.Config) (string, bool, error) {
 	}
 
 	bareDest := barePath(cfg, repoName, true, &parsed)
-	if !isContainedPath(cfg.BareRoot, bareDest) {
+	if !IsContainedPath(cfg.BareRoot, bareDest) {
 		return "", false, fmt.Errorf("computed bare path escapes bare root: %s", bareDest)
 	}
 	if !fileExists(bareDest) {
@@ -434,7 +434,7 @@ func (c *Catalog) AddURL(url string, cfg *config.Config) (string, bool, error) {
 	}
 
 	wtPath := worktree.Path(cfg.WorktreeRoot, &parsed, repoName, mainBranch)
-	if !isContainedPath(cfg.WorktreeRoot, wtPath) {
+	if !IsContainedPath(cfg.WorktreeRoot, wtPath) {
 		return "", false, fmt.Errorf("computed worktree path escapes worktree root: %s", wtPath)
 	}
 	if !fileExists(wtPath) {
@@ -493,7 +493,11 @@ func getOriginURL(dir string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func isContainedPath(root, path string) bool {
+// IsContainedPath reports whether path resolves to a location inside root
+// (or equal to root). It uses filepath.Rel for lexical comparison; both
+// sides should already be absolute, or be safe to interpret relative to
+// the current working directory.
+func IsContainedPath(root, path string) bool {
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
 		return false

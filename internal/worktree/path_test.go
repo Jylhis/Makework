@@ -64,6 +64,25 @@ func TestParentDirNotUnderBareRoot(t *testing.T) {
 	}
 }
 
+func TestParentDirRejectsTraversalRelative(t *testing.T) {
+	got := ParentDir("/data/worktrees", "/data/repos", "/data/repos/../outside/repo.git")
+	if got != "" {
+		t.Errorf("expected empty, got %q", got)
+	}
+}
+
+// TestParentDirAcceptsFilesystemRoot guards against a regression where a
+// "/" worktree root would lexically reject every valid candidate because
+// of how the prefix check used to be written. With Rel-based containment
+// the root is treated correctly.
+func TestParentDirAcceptsFilesystemRoot(t *testing.T) {
+	got := ParentDir("/", "/data/repos", "/data/repos/github.com/user/repo.git")
+	want := "/github.com/user/repo"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 func TestSanitizeBranch(t *testing.T) {
 	tests := []struct{ in_, want string }{
 		{"main", "main"},
