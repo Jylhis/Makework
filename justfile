@@ -33,6 +33,10 @@ sync:
     for name in {{ _shared_inputs }}; do
         node=$(jq -r ".nodes.root.inputs.\"$name\"" flake.lock)
         rev=$(jq -r ".nodes.\"$node\".locked.rev" flake.lock)
+        if ! [[ "$rev" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: unexpected revision for $name: $rev" >&2
+            exit 1
+        fi
         owner=$(jq -r ".nodes.\"$node\".locked.owner" flake.lock)
         repo=$(jq -r ".nodes.\"$node\".locked.repo" flake.lock)
         echo "Syncing $name -> github:$owner/$repo/$rev"
