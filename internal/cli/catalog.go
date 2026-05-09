@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/repo"
@@ -169,11 +171,17 @@ func newRepoPurge() *cobra.Command {
 				}
 			}
 
-			// Remove bare clone
-			if _, err := os.Stat(r.Path); err == nil {
-				if err := os.RemoveAll(r.Path); err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove bare clone: %v\n", err)
+			// Remove bare clone only if it stays under configured bare_root.
+			if within, err := isWithinRoot(r.Path, cfg.BareRoot); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not validate bare clone path %s: %v\n", r.Path, err)
+			} else if within {
+				if _, err := os.Stat(r.Path); err == nil {
+					if err := os.RemoveAll(r.Path); err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not remove bare clone: %v\n", err)
+					}
 				}
+			} else {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: refusing to remove path outside bare_root: %s\n", r.Path)
 			}
 
 			delete(cat.Repos, name)
@@ -185,6 +193,25 @@ func newRepoPurge() *cobra.Command {
 			return nil
 		},
 	})
+}
+
+func isWithinRoot(target, root string) (bool, error) {
+	targetAbs, err := filepath.Abs(target)
+	if err != nil {
+		return false, err
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return false, err
+	}
+	rel, err := filepath.Rel(rootAbs, targetAbs)
+	if err != nil {
+		return false, err
+	}
+	if rel == "." {
+		return true, nil
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)), nil
 }
 
 func fileExistsCli(path string) bool {

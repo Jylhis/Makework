@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jylhis/makework/internal/repo"
 )
 
 // setupIsolatedEnv creates isolated XDG dirs for testing CLI commands.
@@ -150,6 +152,43 @@ func TestRepoPurgeUpdatesRepoRootsCache(t *testing.T) {
 	}
 	if bytes.Contains(data, []byte("source-repo.git")) {
 		t.Errorf("expected source-repo.git purged from cache, got %q", data)
+	}
+}
+
+func TestRepoPurgeRefusesOutsideBareRootDeletion(t *testing.T) {
+	home := setupIsolatedEnv(t)
+	if _, err := captureOutput(t, "init"); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	cat := loadCatalog()
+	victim := filepath.Join(home, "victim")
+	mustMkdir(t, victim)
+	cat.Repos["evil"] = &repo.Repository{Name: "evil", Path: victim}
+	if err := cat.Save(); err != nil {
+		t.Fatalf("save catalog: %v", err)
+	}
+
+	if _, err := captureOutput(t, "repo", "purge", "evil"); err != nil {
+		t.Fatalf("repo purge: %v", err)
+	}
+	if _, err := os.Stat(victim); err != nil {
+		t.Fatalf("expected outside path to remain after purge: %v", err)
+	}
+}
+
+func TestIsWithinRoot(t *testing.T) {
+	root := filepath.Join(string(filepath.Separator), "tmp", "root")
+	ok, err := isWithinRoot(filepath.Join(root, "a", "b"), root)
+	if err != nil || !ok {
+		t.Fatalf("expected path under root to validate, ok=%v err=%v", ok, err)
+	}
+	ok, err = isWithinRoot(filepath.Join(root, "..", "other"), root)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Fatal("expected traversal path to be rejected")
 	}
 }
 
