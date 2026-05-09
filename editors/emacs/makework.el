@@ -25,8 +25,9 @@
   :type 'string
   :group 'makework)
 
-(defcustom makework-use-nix t
-  "Whether to activate nix environment when navigating to projects."
+(defcustom makework-use-nix nil
+  "Whether to activate nix environment command emitted by `mw go`.
+Disabled by default for safety; enabling runs a shell command."
   :type 'boolean
   :group 'makework)
 
