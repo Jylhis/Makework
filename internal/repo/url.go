@@ -45,8 +45,15 @@ func ParseRemoteURL(url string) (ParsedURL, bool) {
 }
 
 func parseHTTPLike(rest string) (ParsedURL, bool) {
-	host, path, ok := cut(rest, "/")
-	if !ok || host == "" || path == "" {
+	hostPort, path, ok := cut(rest, "/")
+	if !ok || hostPort == "" || path == "" {
+		return ParsedURL{}, false
+	}
+	host := hostPort
+	if i := strings.Index(hostPort, ":"); i >= 0 {
+		host = hostPort[:i]
+	}
+	if !isSafeHost(host) {
 		return ParsedURL{}, false
 	}
 	segs := splitPathSegments(path)
@@ -69,6 +76,9 @@ func parseSSH(rest string) (ParsedURL, bool) {
 	if i := strings.Index(hostPort, ":"); i >= 0 {
 		host = hostPort[:i]
 	}
+	if !isSafeHost(host) {
+		return ParsedURL{}, false
+	}
 	segs := splitPathSegments(path)
 	if host == "" || len(segs) == 0 {
 		return ParsedURL{}, false
@@ -81,6 +91,9 @@ func parseSCP(rest string) (ParsedURL, bool) {
 	if !ok || host == "" || path == "" {
 		return ParsedURL{}, false
 	}
+	if !isSafeHost(host) {
+		return ParsedURL{}, false
+	}
 	segs := splitPathSegments(path)
 	if len(segs) == 0 {
 		return ParsedURL{}, false
@@ -91,9 +104,13 @@ func parseSCP(rest string) (ParsedURL, bool) {
 func splitPathSegments(path string) []string {
 	var out []string
 	for _, s := range strings.Split(path, "/") {
-		if s != "" {
-			out = append(out, s)
+		if s == "" {
+			continue
 		}
+		if !isSafeSegment(s) {
+			return nil
+		}
+		out = append(out, s)
 	}
 	if len(out) == 0 {
 		return nil
@@ -105,11 +122,35 @@ func splitPathSegments(path string) []string {
 	// Re-filter in case the strip left an empty segment (".git" alone).
 	filtered := out[:0]
 	for _, s := range out {
-		if s != "" {
-			filtered = append(filtered, s)
+		if s == "" {
+			continue
 		}
+		if !isSafeSegment(s) {
+			return nil
+		}
+		filtered = append(filtered, s)
 	}
 	return filtered
+}
+
+// isSafeSegment reports whether s is safe to use as a single path component
+// when materializing a remote URL onto the local filesystem. It rejects
+// empty, "." and ".." segments and any segment that contains a path
+// separator on either Unix (/) or Windows (\), or a colon (which is a
+// filename separator for NTFS alternate data streams).
+//
+// Callers that pass a raw "host:port" string must strip the port first,
+// since the colon is rejected here.
+func isSafeSegment(s string) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	return !strings.ContainsAny(s, `/\:`)
+}
+
+// isSafeHost validates a hostname using the same rules as isSafeSegment.
+func isSafeHost(host string) bool {
+	return isSafeSegment(host)
 }
 
 // cut is strings.Cut specialized for a single-character separator.
