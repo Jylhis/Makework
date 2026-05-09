@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/config"
@@ -115,18 +116,23 @@ func newGoCmd() *cobra.Command {
 			}
 
 			top := results[0]
-			ref := refOverride
-			if ref == "" {
-				ref = top.Branch
-				if ref == "" {
-					ref = "main"
+			branch := refOverride
+			if branch == "" {
+				branch = top.Branch
+				if branch == "" {
+					branch = "main"
 				}
 			}
-			resolved, err := cat.FindProjectUnambiguous(top.RepoName)
-			if err != nil {
-				return err
+			suggestName := top.RepoName
+			if top.ProjectName != "" {
+				suggestName = top.ProjectName
 			}
-			return navigateToWorktree(cfg, resolved, ref, out)
+			fmt.Fprintf(errOut,
+				"Refusing to auto-navigate on fuzzy match %q (top match: %s@%s, score %.3f).\n",
+				query, suggestName, branch, top.Score,
+			)
+			fmt.Fprintf(errOut, "Run %s to confirm.\n", shellQuote("mw go "+suggestName+"@"+branch))
+			return fmt.Errorf("confirmation required for fuzzy match")
 		},
 	}
 	cmd.Flags().BoolVar(&list, "list", false, "Show all matches with scores instead of navigating")
@@ -175,4 +181,11 @@ func isTerminal() bool {
 		return false
 	}
 	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// shellQuote returns s wrapped in single quotes with embedded single quotes
+// escaped using the standard '\” POSIX trick. The result is safe to paste
+// into a POSIX shell as a single argument.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
