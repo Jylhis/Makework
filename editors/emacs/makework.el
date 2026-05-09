@@ -26,8 +26,10 @@
   :group 'makework)
 
 (defcustom makework-use-nix nil
-  "Whether to activate nix environment command emitted by `mw go`.
-Disabled by default for safety; enabling runs a shell command."
+  "Whether to run the Nix activation command emitted by `mw go`.
+When non-nil, the shell command supplied by the project is executed,
+which can include arbitrary code from a repository's makework config.
+Disabled by default for safety."
   :type 'boolean
   :group 'makework)
 
