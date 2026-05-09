@@ -30,15 +30,24 @@ update:
 sync:
     #!/usr/bin/env bash
     set -euo pipefail
+    safe='^[A-Za-z0-9._-]+$'
     for name in {{ _shared_inputs }}; do
-        node=$(jq -r ".nodes.root.inputs.\"$name\"" flake.lock)
-        rev=$(jq -r ".nodes.\"$node\".locked.rev" flake.lock)
-        if ! [[ "$rev" =~ ^[0-9a-f]{40}$ ]]; then
+        node=$(jq -r --arg name "$name" '.nodes.root.inputs[$name]' flake.lock)
+        if ! [[ "$node" =~ $safe ]]; then
+            echo "ERROR: unexpected node name for $name: $node" >&2
+            exit 1
+        fi
+        rev=$(jq -r --arg node "$node" '.nodes[$node].locked.rev' flake.lock)
+        if ! [[ "$rev" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then
             echo "ERROR: unexpected revision for $name: $rev" >&2
             exit 1
         fi
-        owner=$(jq -r ".nodes.\"$node\".locked.owner" flake.lock)
-        repo=$(jq -r ".nodes.\"$node\".locked.repo" flake.lock)
+        owner=$(jq -r --arg node "$node" '.nodes[$node].locked.owner' flake.lock)
+        repo=$(jq -r --arg node "$node" '.nodes[$node].locked.repo' flake.lock)
+        if ! [[ "$owner" =~ $safe ]] || ! [[ "$repo" =~ $safe ]]; then
+            echo "ERROR: unexpected owner/repo for $name: $owner/$repo" >&2
+            exit 1
+        fi
         echo "Syncing $name -> github:$owner/$repo/$rev"
         tmp=$(mktemp)
         sed -E "s|url: github:$owner/$repo(/[^[:space:]]*)?|url: github:$owner/$repo/$rev|" \
@@ -54,10 +63,10 @@ verify:
     fail=0
     printf '%-14s %-44s %-44s\n' input flake devenv
     for name in {{ _shared_inputs }}; do
-        f_node=$(jq -r ".nodes.root.inputs.\"$name\"" flake.lock)
-        f_rev=$(jq -r ".nodes.\"$f_node\".locked.rev" flake.lock)
-        d_node=$(jq -r ".nodes.root.inputs.\"$name\"" devenv.lock)
-        d_rev=$(jq -r ".nodes.\"$d_node\".locked.rev" devenv.lock)
+        f_node=$(jq -r --arg name "$name" '.nodes.root.inputs[$name]' flake.lock)
+        f_rev=$(jq -r --arg node "$f_node" '.nodes[$node].locked.rev' flake.lock)
+        d_node=$(jq -r --arg name "$name" '.nodes.root.inputs[$name]' devenv.lock)
+        d_rev=$(jq -r --arg node "$d_node" '.nodes[$node].locked.rev' devenv.lock)
         printf '%-14s %-44s %-44s\n' "$name" "$f_rev" "$d_rev"
         [ "$f_rev" = "$d_rev" ] || fail=1
     done
