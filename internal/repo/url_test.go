@@ -36,7 +36,17 @@ func TestParseRemoteURL(t *testing.T) {
 }
 
 func TestParseRemoteURLRejects(t *testing.T) {
-	for _, bad := range []string{"", "   ", "not-a-url", "https://github.com/", "https://github.com"} {
+	for _, bad := range []string{
+		"",
+		"   ",
+		"not-a-url",
+		"https://github.com/",
+		"https://github.com",
+		"https://../outside/repo.git",
+		"https://github.com/../../outside/repo.git",
+		"git@github.com:../repo.git",
+		"ssh://git@github.com/C:/repo.git",
+	} {
 		if _, ok := ParseRemoteURL(bad); ok {
 			t.Errorf("expected %q to fail", bad)
 		}

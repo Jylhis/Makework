@@ -49,6 +49,9 @@ func parseHTTPLike(rest string) (ParsedURL, bool) {
 	if !ok || host == "" || path == "" {
 		return ParsedURL{}, false
 	}
+	if !isSafePathComponent(host) {
+		return ParsedURL{}, false
+	}
 	segs := splitPathSegments(path)
 	if len(segs) == 0 {
 		return ParsedURL{}, false
@@ -69,6 +72,9 @@ func parseSSH(rest string) (ParsedURL, bool) {
 	if i := strings.Index(hostPort, ":"); i >= 0 {
 		host = hostPort[:i]
 	}
+	if !isSafePathComponent(host) {
+		return ParsedURL{}, false
+	}
 	segs := splitPathSegments(path)
 	if host == "" || len(segs) == 0 {
 		return ParsedURL{}, false
@@ -81,6 +87,9 @@ func parseSCP(rest string) (ParsedURL, bool) {
 	if !ok || host == "" || path == "" {
 		return ParsedURL{}, false
 	}
+	if !isSafePathComponent(host) {
+		return ParsedURL{}, false
+	}
 	segs := splitPathSegments(path)
 	if len(segs) == 0 {
 		return ParsedURL{}, false
@@ -91,6 +100,12 @@ func parseSCP(rest string) (ParsedURL, bool) {
 func splitPathSegments(path string) []string {
 	var out []string
 	for _, s := range strings.Split(path, "/") {
+		if s == "" {
+			continue
+		}
+		if !isSafePathComponent(s) {
+			return nil
+		}
 		if s != "" {
 			out = append(out, s)
 		}
@@ -105,11 +120,24 @@ func splitPathSegments(path string) []string {
 	// Re-filter in case the strip left an empty segment (".git" alone).
 	filtered := out[:0]
 	for _, s := range out {
+		if s == "" {
+			continue
+		}
+		if !isSafePathComponent(s) {
+			return nil
+		}
 		if s != "" {
 			filtered = append(filtered, s)
 		}
 	}
 	return filtered
+}
+
+func isSafePathComponent(s string) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	return !strings.ContainsAny(s, `:/\\`)
 }
 
 // cut is strings.Cut specialized for a single-character separator.
