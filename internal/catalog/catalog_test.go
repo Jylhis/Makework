@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/jylhis/makework/internal/project"
@@ -174,5 +175,15 @@ func TestCatalogTOMLRoundTrip(t *testing.T) {
 	rr := back.Repos["test-repo"]
 	if rr.MainBranch != "main" || rr.URL == nil || *rr.URL != url {
 		t.Errorf("round-trip = %+v", rr)
+	}
+}
+
+func TestIsWithinRoot(t *testing.T) {
+	root := filepath.Join("/tmp", "mw-root")
+	if !isWithinRoot(root, filepath.Join(root, "github.com", "user", "repo.git")) {
+		t.Fatal("expected child path to remain within root")
+	}
+	if isWithinRoot(root, filepath.Join(root, "..", "outside", "repo.git")) {
+		t.Fatal("expected traversal path to be rejected")
 	}
 }

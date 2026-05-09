@@ -344,6 +344,9 @@ func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, erro
 	}
 
 	bareDest := barePath(cfg, repoName, hasParsed, &parsed)
+	if !isWithinRoot(cfg.BareRoot, bareDest) {
+		return "", false, fmt.Errorf("invalid bare destination derived from repository URL")
+	}
 
 	if remoteURL != "" && !fileExists(bareDest) {
 		if err := repo.CloneBare(remoteURL, bareDest); err != nil {
@@ -370,6 +373,9 @@ func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, erro
 		parsedPtr = &parsed
 	}
 	wtPath := worktree.Path(cfg.WorktreeRoot, parsedPtr, repoName, mainBranch)
+	if !isWithinRoot(cfg.WorktreeRoot, wtPath) {
+		return "", false, fmt.Errorf("invalid worktree destination derived from repository URL")
+	}
 	if !fileExists(wtPath) {
 		_ = worktree.Create(bareDest, mainBranch, wtPath)
 	}
@@ -413,6 +419,9 @@ func (c *Catalog) AddURL(url string, cfg *config.Config) (string, bool, error) {
 	}
 
 	bareDest := barePath(cfg, repoName, true, &parsed)
+	if !isWithinRoot(cfg.BareRoot, bareDest) {
+		return "", false, fmt.Errorf("invalid bare destination derived from repository URL")
+	}
 	if !fileExists(bareDest) {
 		if err := repo.CloneBare(url, bareDest); err != nil {
 			return "", false, err
@@ -425,6 +434,9 @@ func (c *Catalog) AddURL(url string, cfg *config.Config) (string, bool, error) {
 	}
 
 	wtPath := worktree.Path(cfg.WorktreeRoot, &parsed, repoName, mainBranch)
+	if !isWithinRoot(cfg.WorktreeRoot, wtPath) {
+		return "", false, fmt.Errorf("invalid worktree destination derived from repository URL")
+	}
 	if !fileExists(wtPath) {
 		_ = worktree.Create(bareDest, mainBranch, wtPath)
 	}
@@ -532,4 +544,12 @@ func walkForRepos(dir string, depth uint32, opts SyncOptions) ([]string, error) 
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+func isWithinRoot(root, candidate string) bool {
+	rel, err := filepath.Rel(root, candidate)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
