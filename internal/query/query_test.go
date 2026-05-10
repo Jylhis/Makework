@@ -40,6 +40,19 @@ func TestParseLogLineThreeFields(t *testing.T) {
 	}
 }
 
+func TestParseLogLineSanitizesControlChars(t *testing.T) {
+	e, ok := ParseLogLine("abc123\tMallory\x1b[31mRED\x1b[0m\t2026-01-01T00:00:00+00:00\tok\rspoof", "r", "m", "/tmp")
+	if !ok {
+		t.Fatal("expected ok")
+	}
+	if e.Author != "Mallory[31mRED[0m" {
+		t.Errorf("author = %q", e.Author)
+	}
+	if e.Message != "okspoof" {
+		t.Errorf("msg = %q", e.Message)
+	}
+}
+
 func TestDedupSameRepo(t *testing.T) {
 	entries := []Entry{
 		{RepoName: "r", CommitHash: "abc"},
