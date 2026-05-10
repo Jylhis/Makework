@@ -41,6 +41,16 @@ func TestParseRemoteURLRejects(t *testing.T) {
 			t.Errorf("expected %q to fail", bad)
 		}
 	}
+	for _, bad := range []string{
+		"https://github.com/user/../repo.git",
+		"https://github.com/user/./repo.git",
+		"git@github.com:user/../repo.git",
+		"ssh://git@github.com/user/../repo.git",
+	} {
+		if _, ok := ParseRemoteURL(bad); ok {
+			t.Errorf("expected %q to fail", bad)
+		}
+	}
 }
 
 func TestParsedURLEqual(t *testing.T) {

@@ -91,9 +91,13 @@ func parseSCP(rest string) (ParsedURL, bool) {
 func splitPathSegments(path string) []string {
 	var out []string
 	for _, s := range strings.Split(path, "/") {
-		if s != "" {
-			out = append(out, s)
+		if s == "" {
+			continue
 		}
+		if s == "." || s == ".." {
+			return nil
+		}
+		out = append(out, s)
 	}
 	if len(out) == 0 {
 		return nil
