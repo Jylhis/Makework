@@ -1,6 +1,7 @@
 package worktree
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -23,6 +24,9 @@ func Create(barePath, branch, wtPath string) error {
 // CreateBranch runs `git -C <barePath> worktree add -b <newBranch> <wtPath> <startPoint>`.
 // It creates a new branch from startPoint and checks it out in a new worktree.
 func CreateBranch(barePath, newBranch, wtPath, startPoint string) error {
+	if strings.HasPrefix(newBranch, "-") {
+		return fmt.Errorf("invalid branch name %q: branch names must not start with '-'", newBranch)
+	}
 	_, err := repo.RunGitCapture("-C", barePath, "worktree", "add", "-b", newBranch, wtPath, startPoint)
 	return err
 }
