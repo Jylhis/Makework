@@ -27,11 +27,15 @@ func (l *fileLock) Close() error {
 // The lock file should be a sidecar (e.g. "data.lock"), not the data file
 // itself, since the data file may be atomically replaced via rename.
 func AcquireLock(path string) (io.Closer, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+	if err := f.Chmod(0o600); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		_ = f.Close() // best-effort close on flock failure
 		return nil, err
 	}
