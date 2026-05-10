@@ -84,7 +84,7 @@ add-zsh-hook chpwd _makework_hook
 const bashHook = `
 # makework visit tracking
 _makework_hook() {
-  command mw visit "$PWD" 2>/dev/null & disown
+  command mw visit "$PWD" 2>/dev/null & disown "$!" 2>/dev/null || true
 }
 if [ -z "${_MAKEWORK_HOOK_INSTALLED:-}" ]; then
   _MAKEWORK_HOOK_INSTALLED=1
