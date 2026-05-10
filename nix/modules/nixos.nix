@@ -28,7 +28,7 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = cfg.settings == { };
+        assertion = common.mkConfigFile cfg == null;
         message = ''
           programs.makework.settings is per-user configuration and cannot be
           applied system-wide. Move it to the home-manager module instead.
