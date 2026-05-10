@@ -153,7 +153,7 @@ func newGoCmd() *cobra.Command {
 				"Refusing to auto-navigate on fuzzy match %q (top match: %s@%s, score %.3f).\n",
 				query, suggestName, branch, top.Score,
 			)
-			fmt.Fprintf(errOut, "Run %s to confirm.\n", shellQuote("mw go "+suggestName+"@"+branch))
+			fmt.Fprintf(errOut, "Run mw go %s to confirm.\n", shellQuote(suggestName+"@"+branch))
 			return fmt.Errorf("confirmation required for fuzzy match")
 		},
 	}
