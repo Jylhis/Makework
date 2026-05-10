@@ -42,7 +42,7 @@ func sanitizeTerminalText(s string) string {
 		if r == '\t' {
 			return r
 		}
-		if unicode.IsControl(r) {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 			return -1
 		}
 		return r
