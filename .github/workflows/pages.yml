@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: github-pages
@@ -30,7 +28,7 @@ jobs:
       - name: Stage site
         run: |
           mkdir -p site
-          cp -rL result/. site/
+          cp -r result/. site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -39,6 +37,9 @@ jobs:
     name: Deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
