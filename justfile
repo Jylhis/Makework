@@ -82,7 +82,7 @@ deps-update:
 
 # Update a specific Go dependency (usage: just deps-get github.com/foo/bar@latest)
 deps-get pkg:
-    go get {{pkg}}
+    go get {{quote(pkg)}}
     go mod tidy
 
 # Generate Go coverage report
