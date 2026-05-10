@@ -8,6 +8,10 @@ import (
 	"testing"
 )
 
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
+}
+
 // writeHookFile captures `mw init <shell>` output to a file and returns its path.
 func writeHookFile(t *testing.T, shell, dir string) string {
 	t.Helper()
@@ -30,7 +34,7 @@ func TestInitZshHookIsIdempotent(t *testing.T) {
 	hook := writeHookFile(t, "zsh", dir)
 
 	// Source twice; ensure chpwd_functions only contains one entry.
-	script := "source " + hook + "\nsource " + hook + "\nprint -r -- \"${chpwd_functions[@]}\""
+	script := "source " + shellQuote(hook) + "\nsource " + shellQuote(hook) + "\nprint -r -- \"${chpwd_functions[@]}\""
 	cmd := exec.Command("zsh", "-f", "-c", script)
 	out, err := cmd.Output()
 	if err != nil {
@@ -56,7 +60,7 @@ func TestInitBashHookIsIdempotent(t *testing.T) {
 	hook := writeHookFile(t, "bash", dir)
 
 	// Source twice; ensure PROMPT_COMMAND mentions _makework_hook only once.
-	script := "source " + hook + "\nsource " + hook + "\nprintf '%s\\n' \"$PROMPT_COMMAND\""
+	script := "source " + shellQuote(hook) + "\nsource " + shellQuote(hook) + "\nprintf '%s\\n' \"$PROMPT_COMMAND\""
 	cmd := exec.Command("bash", "--noprofile", "--norc", "-c", script)
 	out, err := cmd.Output()
 	if err != nil {
@@ -82,16 +86,16 @@ func TestInitZshHookActuallyFiresOnChpwd(t *testing.T) {
 		t.Fatalf("mkdir stub: %v", err)
 	}
 	logPath := filepath.Join(dir, "visits.log")
-	stub := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + logPath + "\n"
+	stub := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + shellQuote(logPath) + "\n"
 	stubPath := filepath.Join(stubDir, "mw")
 	if err := os.WriteFile(stubPath, []byte(stub), 0o755); err != nil {
 		t.Fatalf("write stub: %v", err)
 	}
 	target := t.TempDir()
 
-	script := "export PATH=" + stubDir + ":$PATH\n" +
-		"source " + hook + "\n" +
-		"cd " + target + "\n" +
+	script := "export PATH=" + shellQuote(stubDir) + ":$PATH\n" +
+		"source " + shellQuote(hook) + "\n" +
+		"cd " + shellQuote(target) + "\n" +
 		"wait 2>/dev/null\n"
 	cmd := exec.Command("zsh", "-f", "-c", script)
 	if out, err := cmd.CombinedOutput(); err != nil {
