@@ -80,3 +80,25 @@ func TestApplyNoopWhenDirMissing(t *testing.T) {
 		t.Errorf("want 0 copied, got %d", len(copied))
 	}
 }
+
+func TestApplySkipsSymlinkedDestinationAncestor(t *testing.T) {
+	tmp := t.TempDir()
+	tpl := filepath.Join(tmp, "templates")
+	wt := filepath.Join(tmp, "worktree")
+	escape := filepath.Join(tmp, "escape")
+	os.MkdirAll(filepath.Join(tpl, ".config"), 0o755)
+	os.MkdirAll(wt, 0o755)
+	os.MkdirAll(escape, 0o755)
+	os.WriteFile(filepath.Join(tpl, ".config", "settings.json"), []byte("{}"), 0o644)
+	if err := os.Symlink(escape, filepath.Join(wt, ".config")); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+
+	_, err := Apply(tpl, wt)
+	if err == nil {
+		t.Fatal("expected error for symlinked destination path")
+	}
+	if _, err := os.Stat(filepath.Join(escape, "settings.json")); err == nil {
+		t.Fatal("unexpected write outside worktree")
+	}
+}
