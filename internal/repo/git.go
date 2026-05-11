@@ -94,3 +94,50 @@ func CheckDefaultBranchChanged(barePath, known string) (string, error) {
 	}
 	return "", nil
 }
+
+// Rebase runs `git -C <wtPath> rebase <target>`. On failure, attempts
+// `git rebase --abort` so the working tree is not left mid-rebase.
+func Rebase(wtPath, target string) error {
+	if _, err := RunGitCapture("-C", wtPath, "rebase", target); err != nil {
+		_, _ = RunGitCapture("-C", wtPath, "rebase", "--abort")
+		return err
+	}
+	return nil
+}
+
+// MergeFF runs `git -C <wtPath> merge --ff-only <branch>` and fails if a
+// fast-forward is not possible.
+func MergeFF(wtPath, branch string) error {
+	_, err := RunGitCapture("-C", wtPath, "merge", "--ff-only", branch)
+	return err
+}
+
+// IsAncestor reports whether a is an ancestor commit of b. Both refs
+// must resolve in repoPath. A non-resolution error is returned as-is.
+func IsAncestor(repoPath, a, b string) (bool, error) {
+	cmd := exec.Command("git", "-C", repoPath, "merge-base", "--is-ancestor", a, b)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, &GitError{
+		Cmd:    "git -C " + repoPath + " merge-base --is-ancestor " + a + " " + b,
+		Stderr: strings.TrimSpace(stderr.String()),
+	}
+}
+
+// DeleteBranch runs `git -C <barePath> branch -d <branch>`. With force,
+// uses -D and removes unmerged branches.
+func DeleteBranch(barePath, branch string, force bool) error {
+	flag := "-d"
+	if force {
+		flag = "-D"
+	}
+	_, err := RunGitCapture("-C", barePath, "branch", flag, branch)
+	return err
+}
