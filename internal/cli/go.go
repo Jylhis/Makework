@@ -4,14 +4,18 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/config"
+	"github.com/jylhis/makework/internal/hook"
 	"github.com/jylhis/makework/internal/nix"
+	"github.com/jylhis/makework/internal/project"
 	"github.com/jylhis/makework/internal/resolver"
 	"github.com/jylhis/makework/internal/template"
 	"github.com/jylhis/makework/internal/worktree"
+	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
 )
 
@@ -142,10 +146,12 @@ func newGoCmd() *cobra.Command {
 func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, ref string, out io.Writer) error {
 	wtPath := resolvedWorktreePath(cfg, resolved, ref)
 
+	newlyCreated := false
 	if !fileExistsCli(wtPath) {
 		if err := worktree.Create(resolved.Repo.Path, ref, wtPath); err != nil {
 			return err
 		}
+		newlyCreated = true
 	}
 
 	if len(resolved.SparsePaths) > 0 {
@@ -154,6 +160,10 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 
 	if cfg.TemplateDir != nil {
 		_, _ = template.Apply(*cfg.TemplateDir, wtPath)
+	}
+
+	if newlyCreated {
+		runPostCreateHooks(wtPath, resolved.Repo.Name, ref, os.Stderr)
 	}
 
 	finalPath := wtPath
@@ -188,4 +198,31 @@ func isTerminal() bool {
 // into a POSIX shell as a single argument.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// runPostCreateHooks reads .makework.toml from wtPath (if present) and
+// runs the configured post-create commands. Errors are logged to out
+// but do not fail the worktree creation, since the worktree itself is
+// already usable.
+func runPostCreateHooks(wtPath, repoName, branch string, out io.Writer) {
+	data, err := os.ReadFile(filepath.Join(wtPath, ".makework.toml"))
+	if err != nil {
+		return
+	}
+	var p project.Project
+	if err := toml.Unmarshal(data, &p); err != nil {
+		fmt.Fprintf(out, "warning: .makework.toml parse error: %v\n", err)
+		return
+	}
+	if len(p.Hooks.PostCreate) == 0 {
+		return
+	}
+	env := map[string]string{
+		"MW_WORKTREE_PATH": wtPath,
+		"MW_BRANCH":        branch,
+		"MW_REPO":          repoName,
+	}
+	if err := hook.RunPostCreate(wtPath, p.Hooks.PostCreate, env, out); err != nil {
+		fmt.Fprintf(out, "post-create hook error: %v\n", err)
+	}
 }
