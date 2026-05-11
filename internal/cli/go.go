@@ -11,6 +11,7 @@ import (
 	"github.com/jylhis/makework/internal/config"
 	"github.com/jylhis/makework/internal/hook"
 	"github.com/jylhis/makework/internal/nix"
+	"github.com/jylhis/makework/internal/picker"
 	"github.com/jylhis/makework/internal/project"
 	"github.com/jylhis/makework/internal/resolver"
 	"github.com/jylhis/makework/internal/template"
@@ -35,12 +36,27 @@ func newGoCmd() *cobra.Command {
 				if len(names) == 0 {
 					return fmt.Errorf("no projects registered. Run 'mw repo sync' or 'mw repo add' first")
 				}
-				fmt.Fprintln(errOut, "Available projects:")
-				for _, n := range names {
-					fmt.Fprintf(errOut, "  %s\n", n)
+				if !isTerminal() {
+					fmt.Fprintln(errOut, "Available projects:")
+					for _, n := range names {
+						fmt.Fprintf(errOut, "  %s\n", n)
+					}
+					fmt.Fprintln(errOut, "\nUsage: mw go <project>")
+					return fmt.Errorf("no project specified")
 				}
-				fmt.Fprintln(errOut, "\nUsage: mw go <project>")
-				return fmt.Errorf("no project specified")
+				items := make([]picker.Item, len(names))
+				for i, n := range names {
+					items[i] = picker.Item{Label: n}
+				}
+				sel, err := picker.Pick(items, "Pick a project:", os.Stdin, errOut)
+				if err != nil {
+					return err
+				}
+				resolved, err := cat.FindProjectUnambiguous(sel.Label)
+				if err != nil {
+					return err
+				}
+				return navigateToWorktree(cfg, resolved, resolved.Repo.MainBranch, out)
 			}
 
 			query := args[0]
