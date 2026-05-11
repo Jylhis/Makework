@@ -28,21 +28,14 @@ mw                                 # status across all worktrees
 
 ### With Nix (NixOS / nix-darwin / standalone Nix)
 
-Clone the repo and build the package via devenv:
+Build straight from the flake:
 
 ```sh
-git clone https://github.com/Jylhis/makework.git
-cd makework
-devenv build makework
+nix build github:Jylhis/makework
+nix profile install github:Jylhis/makework
 ```
 
-The result is a store path containing `bin/mw`. Install it into your profile:
-
-```sh
-nix profile install ./devenv/outputs/makework
-```
-
-Or add it to your NixOS configuration (e.g. in a module):
+Or wire it into a NixOS / nix-darwin configuration:
 
 ```nix
 # flake input
@@ -51,8 +44,8 @@ inputs.makework = {
   inputs.nixpkgs.follows = "nixpkgs";
 };
 
-# in your NixOS module
-environment.systemPackages = [ inputs.makework.devenv.outputs.makework ];
+# in your module
+environment.systemPackages = [ inputs.makework.packages.${pkgs.system}.default ];
 ```
 
 Prebuilt binaries are available from the `jylhis` Cachix cache:
@@ -61,11 +54,11 @@ Prebuilt binaries are available from the `jylhis` Cachix cache:
 cachix use jylhis
 ```
 
-### With cargo
+### With Go
 
 ```sh
-devenv shell                # enter dev environment (or use Rust stable 1.85+)
-cargo install --path crates/mw-cli
+devenv shell                # enter dev environment (or use Go 1.23+)
+go install github.com/jylhis/makework/cmd/mw@latest
 ```
 
 ### Post-install
@@ -85,9 +78,11 @@ list.
 ## Development
 
 ```sh
-devenv shell -- cargo test
-devenv shell -- cargo clippy --all-targets -- -D warnings
-devenv shell -- cargo fmt
+devenv shell                # enter dev shell (Go, golangci-lint, gopls, just)
+just test                   # go test ./...
+just lint                   # golangci-lint run
+just fmt                    # treefmt (gofmt + nixfmt)
+just check                  # full flake check (build, lint, tests, fmt)
 ```
 
 See [`CLAUDE.md`](./CLAUDE.md) for the workspace layout.
