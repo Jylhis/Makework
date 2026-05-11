@@ -13,6 +13,8 @@ import (
 	"github.com/jylhis/makework/internal/nix"
 	"github.com/jylhis/makework/internal/picker"
 	"github.com/jylhis/makework/internal/project"
+	"github.com/jylhis/makework/internal/refshortcut"
+	"github.com/jylhis/makework/internal/repo"
 	"github.com/jylhis/makework/internal/resolver"
 	"github.com/jylhis/makework/internal/template"
 	"github.com/jylhis/makework/internal/worktree"
@@ -160,6 +162,11 @@ func newGoCmd() *cobra.Command {
 }
 
 func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, ref string, out io.Writer) error {
+	resolvedRef, err := resolveBranchShortcut(ref, resolved)
+	if err != nil {
+		return err
+	}
+	ref = resolvedRef
 	wtPath := resolvedWorktreePath(cfg, resolved, ref)
 
 	newlyCreated := false
@@ -214,6 +221,25 @@ func isTerminal() bool {
 // into a POSIX shell as a single argument.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// resolveBranchShortcut returns the resolved branch when ref is a
+// pr:N or mr:N shortcut, otherwise returns ref unchanged.
+func resolveBranchShortcut(ref string, resolved *catalog.ResolvedProject) (string, error) {
+	slug := ""
+	if resolved.Repo.URL != nil {
+		if p, ok := repo.ParseRemoteURL(*resolved.Repo.URL); ok {
+			slug = strings.Join(p.Segments, "/")
+		}
+	}
+	branch, ok, err := refshortcut.Resolve(ref, resolved.Repo.Path, slug)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return branch, nil
+	}
+	return ref, nil
 }
 
 // runPostCreateHooks reads .makework.toml from wtPath (if present) and
