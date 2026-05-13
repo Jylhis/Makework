@@ -58,6 +58,9 @@ func newMergeCmd() *cobra.Command {
 				}
 				target = t
 			}
+			if !repo.IsSafeBranchName(target) {
+				return fmt.Errorf("invalid target branch name: %q", target)
+			}
 			if branch == target {
 				return fmt.Errorf("already on target branch %s", target)
 			}

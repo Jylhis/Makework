@@ -173,3 +173,17 @@ func TestMergeKeepWorktree(t *testing.T) {
 		t.Error("branch was deleted despite --keep-worktree")
 	}
 }
+
+// TestMergeRejectsOptionLikeTarget: --target must not accept option-like
+// values that could be interpreted as git flags.
+func TestMergeRejectsOptionLikeTarget(t *testing.T) {
+	_, wtPath := mergeFixture(t, false)
+
+	_, err := captureOutput(t, "merge", "--target", "--exec=touch /tmp/mw_pwned")
+	if err == nil {
+		t.Fatal("expected mw merge to reject option-like --target")
+	}
+	if _, statErr := os.Stat(wtPath); statErr != nil {
+		t.Errorf("worktree should remain after rejected target: %v", statErr)
+	}
+}
