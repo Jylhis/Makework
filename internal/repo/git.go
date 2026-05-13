@@ -108,7 +108,7 @@ func Rebase(wtPath, target string) error {
 // IsSafeBranchName validates a short branch name and rejects option-like
 // values that could be interpreted as git flags.
 func IsSafeBranchName(name string) bool {
-	if strings.HasPrefix(name, "-") {
+	if name == "" || strings.HasPrefix(name, "-") {
 		return false
 	}
 	_, err := RunGitCapture("check-ref-format", "--branch", name)
