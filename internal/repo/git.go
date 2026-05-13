@@ -98,11 +98,21 @@ func CheckDefaultBranchChanged(barePath, known string) (string, error) {
 // Rebase runs `git -C <wtPath> rebase <target>`. On failure, attempts
 // `git rebase --abort` so the working tree is not left mid-rebase.
 func Rebase(wtPath, target string) error {
-	if _, err := RunGitCapture("-C", wtPath, "rebase", target); err != nil {
+	if _, err := RunGitCapture("-C", wtPath, "rebase", "--", target); err != nil {
 		_, _ = RunGitCapture("-C", wtPath, "rebase", "--abort")
 		return err
 	}
 	return nil
+}
+
+// IsSafeBranchName validates a short branch name and rejects option-like
+// values that could be interpreted as git flags.
+func IsSafeBranchName(name string) bool {
+	if strings.HasPrefix(name, "-") {
+		return false
+	}
+	_, err := RunGitCapture("check-ref-format", "--branch", name)
+	return err == nil
 }
 
 // MergeFF runs `git -C <wtPath> merge --ff-only <branch>` and fails if a
