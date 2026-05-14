@@ -3,11 +3,9 @@
 package resolver
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -113,116 +111,6 @@ func ParseQuery(query string) (ParsedQuery, error) {
 		return ParsedQuery{Repo: repo, Branch: branch}, nil
 	}
 	return ParsedQuery{Fuzzy: query}, nil
-}
-
-// --- Visits DB ---
-
-type VisitEntry struct {
-	Key         string  `json:"key"`
-	Score       float64 `json:"score"`
-	LastVisited uint64  `json:"last_visited"`
-}
-
-type VisitsDB struct {
-	Entries []VisitEntry `json:"entries"`
-	MaxAge  float64      `json:"max_age"`
-}
-
-func NewVisitsDB() VisitsDB {
-	return VisitsDB{MaxAge: 10000.0}
-}
-
-func LoadVisits(path string) (VisitsDB, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return NewVisitsDB(), nil
-	}
-	if err != nil {
-		return VisitsDB{}, err
-	}
-	var db VisitsDB
-	if err := json.Unmarshal(data, &db); err != nil {
-		return VisitsDB{}, fmt.Errorf("visits.json parse error: %w", err)
-	}
-	if db.MaxAge == 0 {
-		db.MaxAge = 10000.0
-	}
-	return db, nil
-}
-
-func (db *VisitsDB) Save(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(db, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
-}
-
-func (db *VisitsDB) RecordVisit(key string, now uint64) {
-	for i, e := range db.Entries {
-		if e.Key == key {
-			db.Entries[i].Score += 1.0
-			db.Entries[i].LastVisited = now
-			db.Compact()
-			return
-		}
-	}
-	db.Entries = append(db.Entries, VisitEntry{Key: key, Score: 1.0, LastVisited: now})
-	db.Compact()
-}
-
-func (db *VisitsDB) Compact() {
-	var total float64
-	for _, e := range db.Entries {
-		total += e.Score
-	}
-	if total <= db.MaxAge {
-		return
-	}
-	target := db.MaxAge * 0.9
-	k := total / target
-	for i := range db.Entries {
-		db.Entries[i].Score /= k
-	}
-	filtered := db.Entries[:0]
-	for _, e := range db.Entries {
-		if e.Score >= 1.0 {
-			filtered = append(filtered, e)
-		}
-	}
-	db.Entries = filtered
-}
-
-func (db *VisitsDB) FrecencyScore(key string, now uint64) float64 {
-	for _, e := range db.Entries {
-		if e.Key == key {
-			elapsed := float64(now - e.LastVisited)
-			timeWeight := 1.0 / (1.0 + elapsed/3600.0)
-			return e.Score * timeWeight
-		}
-	}
-	return 0
-}
-
-func (db *VisitsDB) FrecencyScoreWithSiblings(key, repoPrefix string, now uint64) float64 {
-	var score float64
-	for _, e := range db.Entries {
-		elapsed := float64(now - e.LastVisited)
-		timeWeight := 1.0 / (1.0 + elapsed/3600.0)
-		if e.Key == key {
-			score += e.Score * timeWeight
-		} else if strings.HasPrefix(e.Key, repoPrefix) {
-			score += e.Score * timeWeight * 0.5
-		}
-	}
-	return score
 }
 
 // --- Scoring ---
