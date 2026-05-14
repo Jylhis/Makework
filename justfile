@@ -20,11 +20,12 @@ fmt:
 # Inputs shared between flake.nix and devenv.yaml that must stay in lockstep.
 _shared_inputs := "nixpkgs treefmt-nix"
 
-# Update all flake inputs, rewrite devenv pins, and verify
+# Update all flake inputs, devenv pins, and Go dependencies
 update:
     nix flake update
     just sync
     just verify
+    just deps-update
 
 # Rewrite devenv.yaml so every shared input pins the same commit as flake.lock
 sync:
