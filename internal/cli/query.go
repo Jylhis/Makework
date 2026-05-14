@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/jylhis/makework/internal/fsx"
 	"github.com/jylhis/makework/internal/query"
 	"github.com/jylhis/makework/internal/worktree"
 	"github.com/spf13/cobra"
@@ -38,7 +39,7 @@ func newQueryCmd() *cobra.Command {
 					continue
 				}
 				for _, wt := range wts {
-					if wt.IsBare || !fileExistsCli(wt.Path) {
+					if wt.IsBare || !fsx.PathExists(wt.Path) {
 						continue
 					}
 					branch := wt.Branch

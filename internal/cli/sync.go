@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/jylhis/makework/internal/catalog"
+	"github.com/jylhis/makework/internal/fsx"
 	"github.com/jylhis/makework/internal/xdgpath"
 	"github.com/spf13/cobra"
 )
@@ -27,7 +28,7 @@ func newSyncCmd() *cobra.Command {
 			if len(scanRoots) == 0 {
 				dev, err := xdgpath.ExpandTilde("~/Developer")
 				if err == nil {
-					if fileExistsCli(dev) {
+					if fsx.PathExists(dev) {
 						scanRoots = []string{dev}
 					}
 				}

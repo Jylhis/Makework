@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/jylhis/makework/internal/fsx"
 	"github.com/jylhis/makework/internal/repo"
 	"github.com/jylhis/makework/internal/search"
 	"github.com/jylhis/makework/internal/worktree"
@@ -40,7 +41,7 @@ func newSearchCmd() *cobra.Command {
 					}
 				}
 				wtPath := worktree.Path(cfg.WorktreeRoot, parsedURL, repoName, r.MainBranch)
-				if !fileExistsCli(wtPath) {
+				if !fsx.PathExists(wtPath) {
 					continue
 				}
 				results := search.Worktree(wtPath, pattern, repoName, opts)

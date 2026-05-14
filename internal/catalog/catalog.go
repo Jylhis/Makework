@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/jylhis/makework/internal/config"
+	"github.com/jylhis/makework/internal/fsx"
 	"github.com/jylhis/makework/internal/maintenance"
 	"github.com/jylhis/makework/internal/project"
 	"github.com/jylhis/makework/internal/repo"
@@ -204,7 +205,7 @@ func Init(cfg *config.Config) (*InitResult, error) {
 	trackDir(cfgDir, result)
 
 	cfgPath, _ := config.Path()
-	if fileExists(cfgPath) {
+	if fsx.PathExists(cfgPath) {
 		result.AlreadyExisted = append(result.AlreadyExisted, cfgPath)
 	} else {
 		if err := cfg.Save(); err != nil {
@@ -214,7 +215,7 @@ func Init(cfg *config.Config) (*InitResult, error) {
 	}
 
 	catPath, _ := CatalogPath()
-	if fileExists(catPath) {
+	if fsx.PathExists(catPath) {
 		result.AlreadyExisted = append(result.AlreadyExisted, catPath)
 	} else {
 		empty := &Catalog{Repos: make(map[string]*repo.Repository)}
@@ -230,7 +231,7 @@ func Init(cfg *config.Config) (*InitResult, error) {
 }
 
 func trackDir(path string, result *InitResult) {
-	if fileExists(path) {
+	if fsx.PathExists(path) {
 		result.AlreadyExisted = append(result.AlreadyExisted, path)
 	} else {
 		_ = os.MkdirAll(path, 0o755)
@@ -355,7 +356,7 @@ func (c *Catalog) FindProjectUnambiguous(name string) (*ResolvedProject, error) 
 func (c *Catalog) Sync(cfg *config.Config, scanRoots []string, opts SyncOptions) ([]string, error) {
 	var added []string
 	for _, root := range scanRoots {
-		if !fileExists(root) {
+		if !fsx.PathExists(root) {
 			continue
 		}
 		repos, err := walkForRepos(root, 0, opts)
@@ -407,7 +408,7 @@ func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, erro
 		return "", false, fmt.Errorf("computed bare path escapes bare root: %s", bareDest)
 	}
 
-	if remoteURL != "" && !fileExists(bareDest) {
+	if remoteURL != "" && !fsx.PathExists(bareDest) {
 		if err := repo.CloneBare(remoteURL, bareDest); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: remote unreachable for %s: %v. Falling back to local clone.\n", sourcePath, err)
 			_ = os.RemoveAll(bareDest)
@@ -415,7 +416,7 @@ func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, erro
 				return "", false, err
 			}
 		}
-	} else if !fileExists(bareDest) {
+	} else if !fsx.PathExists(bareDest) {
 		if err := repo.CloneBare(sourcePath, bareDest); err != nil {
 			return "", false, err
 		}
@@ -435,7 +436,7 @@ func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, erro
 	if !IsContainedPath(cfg.WorktreeRoot, wtPath) {
 		return "", false, fmt.Errorf("computed worktree path escapes worktree root: %s", wtPath)
 	}
-	if !fileExists(wtPath) {
+	if !fsx.PathExists(wtPath) {
 		_ = worktree.Create(bareDest, mainBranch, wtPath)
 	}
 	_ = maintenance.Register(bareDest)
@@ -481,7 +482,7 @@ func (c *Catalog) AddURL(url string, cfg *config.Config) (string, bool, error) {
 	if !IsContainedPath(cfg.BareRoot, bareDest) {
 		return "", false, fmt.Errorf("computed bare path escapes bare root: %s", bareDest)
 	}
-	if !fileExists(bareDest) {
+	if !fsx.PathExists(bareDest) {
 		if err := repo.CloneBare(url, bareDest); err != nil {
 			return "", false, err
 		}
@@ -496,7 +497,7 @@ func (c *Catalog) AddURL(url string, cfg *config.Config) (string, bool, error) {
 	if !IsContainedPath(cfg.WorktreeRoot, wtPath) {
 		return "", false, fmt.Errorf("computed worktree path escapes worktree root: %s", wtPath)
 	}
-	if !fileExists(wtPath) {
+	if !fsx.PathExists(wtPath) {
 		_ = worktree.Create(bareDest, mainBranch, wtPath)
 	}
 	_ = maintenance.Register(bareDest)
@@ -593,7 +594,7 @@ func walkForRepos(dir string, depth uint32, opts SyncOptions) ([]string, error) 
 			continue
 		}
 		// Bare repo: HEAD + objects/ exist but no .git → skip
-		if !fileExists(dotGit) && fileExists(filepath.Join(path, "HEAD")) && fileExists(filepath.Join(path, "objects")) {
+		if !fsx.PathExists(dotGit) && fsx.PathExists(filepath.Join(path, "HEAD")) && fsx.PathExists(filepath.Join(path, "objects")) {
 			continue
 		}
 		// Real repo
@@ -610,11 +611,6 @@ func walkForRepos(dir string, depth uint32, opts SyncOptions) ([]string, error) 
 		}
 	}
 	return repos, nil
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }
 
 // isGitRepo asks git itself whether path is a working tree or bare repo.

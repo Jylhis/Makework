@@ -9,6 +9,7 @@ import (
 
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/config"
+	"github.com/jylhis/makework/internal/fsx"
 	"github.com/jylhis/makework/internal/hook"
 	"github.com/jylhis/makework/internal/nix"
 	"github.com/jylhis/makework/internal/picker"
@@ -173,7 +174,7 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 	wtPath := resolvedWorktreePath(cfg, resolved, ref)
 
 	newlyCreated := false
-	if !fileExistsCli(wtPath) {
+	if !fsx.PathExists(wtPath) {
 		if err := worktree.Create(resolved.Repo.Path, ref, wtPath); err != nil {
 			return err
 		}
