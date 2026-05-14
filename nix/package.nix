@@ -10,7 +10,7 @@ let
   mw-bin = pkgs.buildGoModule {
     pname = "mw";
     inherit version src;
-    vendorHash = "sha256-l/ugqCaggFCsVwr3ldZxi4lM0LJlBY3sNM2tu7xB0go=";
+    vendorHash = "sha256-nDLncfH+2TbcuHqjd4bUXyh8FqgIILZWJP3kBzwzzrA=";
     subPackages = [ "cmd/mw" ];
     ldflags = [
       "-s"

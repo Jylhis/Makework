@@ -4,14 +4,21 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/config"
+	"github.com/jylhis/makework/internal/hook"
 	"github.com/jylhis/makework/internal/nix"
+	"github.com/jylhis/makework/internal/picker"
+	"github.com/jylhis/makework/internal/project"
+	"github.com/jylhis/makework/internal/refshortcut"
+	"github.com/jylhis/makework/internal/repo"
 	"github.com/jylhis/makework/internal/resolver"
 	"github.com/jylhis/makework/internal/template"
 	"github.com/jylhis/makework/internal/worktree"
+	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/cobra"
 )
 
@@ -31,12 +38,27 @@ func newGoCmd() *cobra.Command {
 				if len(names) == 0 {
 					return fmt.Errorf("no projects registered. Run 'mw repo sync' or 'mw repo add' first")
 				}
-				fmt.Fprintln(errOut, "Available projects:")
-				for _, n := range names {
-					fmt.Fprintf(errOut, "  %s\n", n)
+				if !isTerminal() {
+					fmt.Fprintln(errOut, "Available projects:")
+					for _, n := range names {
+						fmt.Fprintf(errOut, "  %s\n", n)
+					}
+					fmt.Fprintln(errOut, "\nUsage: mw go <project>")
+					return fmt.Errorf("no project specified")
 				}
-				fmt.Fprintln(errOut, "\nUsage: mw go <project>")
-				return fmt.Errorf("no project specified")
+				items := make([]picker.Item, len(names))
+				for i, n := range names {
+					items[i] = picker.Item{Label: n}
+				}
+				sel, err := picker.Pick(items, "Pick a project:", os.Stdin, errOut)
+				if err != nil {
+					return err
+				}
+				resolved, err := cat.FindProjectUnambiguous(sel.Label)
+				if err != nil {
+					return err
+				}
+				return navigateToWorktree(cfg, resolved, resolved.Repo.MainBranch, out)
 			}
 
 			query := args[0]
@@ -131,7 +153,7 @@ func newGoCmd() *cobra.Command {
 				"Refusing to auto-navigate on fuzzy match %q (top match: %s@%s, score %.3f).\n",
 				query, suggestName, branch, top.Score,
 			)
-			fmt.Fprintf(errOut, "Run %s to confirm.\n", shellQuote("mw go "+suggestName+"@"+branch))
+			fmt.Fprintf(errOut, "Run mw go %s to confirm.\n", shellQuote(suggestName+"@"+branch))
 			return fmt.Errorf("confirmation required for fuzzy match")
 		},
 	}
@@ -140,12 +162,19 @@ func newGoCmd() *cobra.Command {
 }
 
 func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, ref string, out io.Writer) error {
+	resolvedRef, err := resolveBranchShortcut(ref, resolved)
+	if err != nil {
+		return err
+	}
+	ref = resolvedRef
 	wtPath := resolvedWorktreePath(cfg, resolved, ref)
 
+	newlyCreated := false
 	if !fileExistsCli(wtPath) {
 		if err := worktree.Create(resolved.Repo.Path, ref, wtPath); err != nil {
 			return err
 		}
+		newlyCreated = true
 	}
 
 	if len(resolved.SparsePaths) > 0 {
@@ -154,6 +183,10 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 
 	if cfg.TemplateDir != nil {
 		_, _ = template.Apply(*cfg.TemplateDir, wtPath)
+	}
+
+	if newlyCreated {
+		runPostCreateHooks(wtPath, resolved.Repo.Name, ref, os.Stderr)
 	}
 
 	finalPath := wtPath
@@ -188,4 +221,50 @@ func isTerminal() bool {
 // into a POSIX shell as a single argument.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// resolveBranchShortcut returns the resolved branch when ref is a
+// pr:N or mr:N shortcut, otherwise returns ref unchanged.
+func resolveBranchShortcut(ref string, resolved *catalog.ResolvedProject) (string, error) {
+	slug := ""
+	if resolved.Repo.URL != nil {
+		if p, ok := repo.ParseRemoteURL(*resolved.Repo.URL); ok {
+			slug = strings.Join(p.Segments, "/")
+		}
+	}
+	branch, ok, err := refshortcut.Resolve(ref, resolved.Repo.Path, slug)
+	if err != nil {
+		return "", err
+	}
+	if ok {
+		return branch, nil
+	}
+	return ref, nil
+}
+
+// runPostCreateHooks reads .makework.toml from wtPath (if present) and
+// runs the configured post-create commands. Errors are logged to out
+// but do not fail the worktree creation, since the worktree itself is
+// already usable.
+func runPostCreateHooks(wtPath, repoName, branch string, out io.Writer) {
+	data, err := os.ReadFile(filepath.Join(wtPath, ".makework.toml"))
+	if err != nil {
+		return
+	}
+	var p project.Project
+	if err := toml.Unmarshal(data, &p); err != nil {
+		fmt.Fprintf(out, "warning: .makework.toml parse error: %v\n", err)
+		return
+	}
+	if len(p.Hooks.PostCreate) == 0 {
+		return
+	}
+	env := map[string]string{
+		"MW_WORKTREE_PATH": wtPath,
+		"MW_BRANCH":        branch,
+		"MW_REPO":          repoName,
+	}
+	if err := hook.RunPostCreate(wtPath, p.Hooks.PostCreate, env, out); err != nil {
+		fmt.Fprintf(out, "post-create hook error: %v\n", err)
+	}
 }
