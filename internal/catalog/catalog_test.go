@@ -2,12 +2,24 @@ package catalog
 
 import (
 	"errors"
+	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/jylhis/makework/internal/project"
 	"github.com/jylhis/makework/internal/repo"
 	"github.com/pelletier/go-toml/v2"
 )
+
+func isolatedXDG(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".local", "state"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
+	return home
+}
 
 func newRepo(name, path string) *repo.Repository {
 	return &repo.Repository{
@@ -146,6 +158,38 @@ func TestValidateUniqueSubprojects(t *testing.T) {
 	var dup ErrDuplicateSubproject
 	if !errors.As(err, &dup) {
 		t.Errorf("expected ErrDuplicateSubproject, got %v", err)
+	}
+}
+
+func TestCatalogSaveConcurrent(t *testing.T) {
+	isolatedXDG(t)
+
+	const writers = 10
+	const itersPerWriter = 20
+
+	var wg sync.WaitGroup
+	for i := range writers {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := range itersPerWriter {
+				r := newRepo("repo", "/tmp/repo")
+				cat := &Catalog{Repos: map[string]*repo.Repository{"repo": r}}
+				if err := cat.Save(); err != nil {
+					t.Errorf("writer %d iter %d: Save: %v", id, j, err)
+					return
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load after concurrent Save: %v", err)
+	}
+	if len(loaded.Repos) != 1 || loaded.Repos["repo"] == nil {
+		t.Fatalf("post-concurrent catalog corrupted: %+v", loaded.Repos)
 	}
 }
 

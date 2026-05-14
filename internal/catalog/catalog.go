@@ -11,12 +11,14 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/jylhis/makework/internal/config"
 	"github.com/jylhis/makework/internal/maintenance"
 	"github.com/jylhis/makework/internal/project"
 	"github.com/jylhis/makework/internal/repo"
 	"github.com/jylhis/makework/internal/worktree"
+	"github.com/jylhis/makework/internal/xdgpath"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -129,7 +131,63 @@ func (c *Catalog) Save() error {
 	if err := enc.Encode(c); err != nil {
 		return err
 	}
-	return os.WriteFile(path, buf.Bytes(), 0o644)
+
+	unlock, err := acquireSaveLock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".catalog.*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		cleanup()
+		return err
+	}
+	return nil
+}
+
+// acquireSaveLock takes an exclusive POSIX advisory lock on a sidecar lock
+// file under $XDG_STATE_HOME/makework/. Concurrent Save calls serialise on
+// this lock so the atomic temp+rename below never interleaves.
+func acquireSaveLock() (func(), error) {
+	stateDir, err := xdgpath.StateDir()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return nil, err
+	}
+	lockPath := filepath.Join(stateDir, "catalog.toml.lock")
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return func() {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = f.Close()
+	}, nil
 }
 
 // --- Init ---
