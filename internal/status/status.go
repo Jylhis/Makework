@@ -1,22 +1,14 @@
-// Package status queries git worktree state (branch, dirty, ahead/behind)
-// and caches results as JSON.
+// Package status queries git worktree state (branch, dirty, ahead/behind).
 package status
 
 import (
-	"encoding/json"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/jylhis/makework/internal/integration"
-	"github.com/jylhis/makework/internal/xdgpath"
 )
-
-// CacheVersion is bumped whenever WorktreeStatus or RepoStatusCache
-// fields change. Caches with a different version are discarded on read.
-const CacheVersion = 2
 
 // WorktreeStatus holds the computed state of one worktree.
 //
@@ -38,59 +30,6 @@ type WorktreeStatus struct {
 	Integration integration.State `json:"integration,omitempty"`
 	LastCommit  int64             `json:"last_commit_ts,omitempty"`
 	IsOrphaned  bool              `json:"is_orphaned"`
-}
-
-// RepoStatusCache is the JSON on-disk format under $XDG_STATE_HOME/makework/cache/<repo>.json.
-type RepoStatusCache struct {
-	Version   int              `json:"version"`
-	RepoName  string           `json:"repo_name"`
-	UpdatedAt string           `json:"updated_at"`
-	Worktrees []WorktreeStatus `json:"worktrees"`
-}
-
-func cacheDir() (string, error) {
-	state, err := xdgpath.StateDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(state, "cache"), nil
-}
-
-// ReadCache loads the cached status for a repo or returns nil. Caches
-// from a different CacheVersion are discarded.
-func ReadCache(repoName string) *RepoStatusCache {
-	dir, err := cacheDir()
-	if err != nil {
-		return nil
-	}
-	data, err := os.ReadFile(filepath.Join(dir, repoName+".json"))
-	if err != nil {
-		return nil
-	}
-	var cache RepoStatusCache
-	if json.Unmarshal(data, &cache) != nil {
-		return nil
-	}
-	if cache.Version != CacheVersion {
-		return nil
-	}
-	return &cache
-}
-
-// WriteCache persists a repo status cache to disk.
-func WriteCache(cache *RepoStatusCache) error {
-	dir, err := cacheDir()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(cache, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(dir, cache.RepoName+".json"), data, 0o644)
 }
 
 // Get computes the basic status of a single worktree (no integration
