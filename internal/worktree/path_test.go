@@ -94,6 +94,11 @@ func TestSanitizeBranch(t *testing.T) {
 		{"a//b///c", "a/b/c"},
 		{"/leading/trailing/", "leading/trailing"},
 		{"refs/tags/release/1.0", "release/1.0"},
+		{"..", ""},
+		{"../escape", "escape"},
+		{"foo/../bar", "foo/bar"},
+		{"foo/./bar", "foo/bar"},
+		{"../..", ""},
 	}
 	for _, tt := range tests {
 		got := SanitizeBranch(tt.in_)

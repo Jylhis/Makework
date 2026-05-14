@@ -74,9 +74,15 @@ func SanitizeBranch(refName string) string {
 	parts := strings.Split(b.String(), "/")
 	var filtered []string
 	for _, p := range parts {
-		if p != "" {
-			filtered = append(filtered, p)
+		// Drop empty, "." and ".." segments so a hostile ref like
+		// "foo/../../etc" cannot escape worktree_root even if the
+		// caller forgets to run IsContainedPath afterwards. git
+		// itself rejects such refs at worktree-add time; this is
+		// belt-and-braces for path computation.
+		if p == "" || p == "." || p == ".." {
+			continue
 		}
+		filtered = append(filtered, p)
 	}
 	return strings.Join(filtered, "/")
 }
