@@ -185,7 +185,7 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 		_, _ = template.Apply(*cfg.TemplateDir, wtPath)
 	}
 
-	if newlyCreated {
+	if newlyCreated && postCreateHooksEnabled() {
 		runPostCreateHooks(wtPath, resolved.Repo.Name, ref, os.Stderr)
 	}
 
@@ -267,4 +267,8 @@ func runPostCreateHooks(wtPath, repoName, branch string, out io.Writer) {
 	if err := hook.RunPostCreate(wtPath, p.Hooks.PostCreate, env, out); err != nil {
 		fmt.Fprintf(out, "post-create hook error: %v\n", err)
 	}
+}
+
+func postCreateHooksEnabled() bool {
+	return os.Getenv("MW_ENABLE_POST_CREATE_HOOKS") == "1"
 }

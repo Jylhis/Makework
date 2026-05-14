@@ -10,6 +10,8 @@ import (
 // `mw go`), the post-create hooks declared in the worktree's
 // .makework.toml run with the MW_* env overlay set.
 func TestPostCreateHookRunsOnSwitch(t *testing.T) {
+	t.Setenv("MW_ENABLE_POST_CREATE_HOOKS", "1")
+
 	home := setupIsolatedEnv(t)
 	if _, err := captureOutput(t, "init"); err != nil {
 		t.Fatalf("mw init: %v", err)
