@@ -3,11 +3,12 @@
 package resolver
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -237,8 +238,8 @@ func Resolve(query string, index *Index, cfg *config.ResolverConfig, ctx *Resolv
 		})
 	}
 
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
+	slices.SortFunc(results, func(a, b Target) int {
+		return cmp.Compare(b.Score, a.Score)
 	})
 
 	if len(results) == 0 {

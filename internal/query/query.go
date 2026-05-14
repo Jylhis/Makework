@@ -2,8 +2,9 @@
 package query
 
 import (
+	"cmp"
 	"os/exec"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -39,11 +40,11 @@ func ParseLogLine(line, repoName, branch, wtPath string) (Entry, bool) {
 // Dedup removes duplicate entries sharing the same (RepoName, CommitHash).
 // Cherry-picks across repos are preserved.
 func Dedup(entries []Entry) []Entry {
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].RepoName != entries[j].RepoName {
-			return entries[i].RepoName < entries[j].RepoName
+	slices.SortFunc(entries, func(a, b Entry) int {
+		if c := cmp.Compare(a.RepoName, b.RepoName); c != 0 {
+			return c
 		}
-		return entries[i].CommitHash < entries[j].CommitHash
+		return cmp.Compare(a.CommitHash, b.CommitHash)
 	})
 	out := entries[:0]
 	for i, e := range entries {
