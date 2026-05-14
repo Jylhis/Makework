@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/jylhis/makework/internal/config"
 	"github.com/jylhis/makework/internal/project"
 	"github.com/jylhis/makework/internal/repo"
 	"github.com/pelletier/go-toml/v2"
@@ -212,6 +213,117 @@ func TestIsGitRepoAcceptsInitRepo(t *testing.T) {
 	}
 	if !isGitRepo(dir) {
 		t.Errorf("isGitRepo rejected a real git working tree")
+	}
+}
+
+func TestIsContainedPath(t *testing.T) {
+	cases := []struct {
+		root, path string
+		want       bool
+	}{
+		{"/a", "/a/b", true},
+		{"/a", "/a", true},
+		{"/a/b", "/a", false},
+		{"/a", "/other/b", false},
+		{"/a", "/a/../b", false},
+		{"/a/b", "/a/b/../b/c", true},
+	}
+	for _, tc := range cases {
+		got := IsContainedPath(tc.root, tc.path)
+		if got != tc.want {
+			t.Errorf("IsContainedPath(%q,%q) = %v; want %v", tc.root, tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestBarePathParsed(t *testing.T) {
+	cfg := &config.Config{BareRoot: "/data/repos"}
+	parsed := &repo.ParsedURL{Host: "github.com", Segments: []string{"user", "repo"}}
+	got := barePath(cfg, "repo", true, parsed)
+	want := "/data/repos/github.com/user/repo.git"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestBarePathParsedSubgroup(t *testing.T) {
+	cfg := &config.Config{BareRoot: "/data/repos"}
+	parsed := &repo.ParsedURL{Host: "gitlab.com", Segments: []string{"group", "sub", "repo"}}
+	got := barePath(cfg, "repo", true, parsed)
+	want := "/data/repos/gitlab.com/group/sub/repo.git"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestBarePathLocal(t *testing.T) {
+	cfg := &config.Config{BareRoot: "/data/repos"}
+	got := barePath(cfg, "myproject", false, nil)
+	want := "/data/repos/local/myproject.git"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestRemoveMissingRepoReturnsErr(t *testing.T) {
+	isolatedXDG(t)
+	cat := &Catalog{Repos: make(map[string]*repo.Repository)}
+	err := cat.Remove("nope")
+	var nf ErrRepoNotFound
+	if !errors.As(err, &nf) {
+		t.Errorf("expected ErrRepoNotFound, got %v", err)
+	}
+}
+
+func TestAddLocalRepo(t *testing.T) {
+	home := isolatedXDG(t)
+	cfg, err := config.Defaults()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	src := filepath.Join(home, "src", "myrepo")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := exec.Command("git", "-C", src, "init", "-q", "-b", "main").Run(); err != nil {
+		t.Skipf("git unavailable: %v", err)
+	}
+	exec.Command("git", "-C", src, "config", "user.email", "t@e").Run()
+	exec.Command("git", "-C", src, "config", "user.name", "t").Run()
+	exec.Command("git", "-C", src, "config", "commit.gpgsign", "false").Run()
+	exec.Command("git", "-C", src, "commit", "-q", "--allow-empty", "-m", "init").Run()
+
+	cat := &Catalog{Repos: make(map[string]*repo.Repository)}
+	name, isNew, err := cat.Add(src, cfg)
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	if !isNew {
+		t.Errorf("expected isNew=true")
+	}
+	if name != "myrepo" {
+		t.Errorf("name = %q, want %q", name, "myrepo")
+	}
+	if _, ok := cat.Repos["myrepo"]; !ok {
+		t.Errorf("repo not registered in catalog: %+v", cat.Repos)
+	}
+
+	// Idempotent: adding again returns isNew=false
+	_, isNew, err = cat.Add(src, cfg)
+	if err != nil {
+		t.Fatalf("Add second time: %v", err)
+	}
+	if isNew {
+		t.Errorf("expected isNew=false on duplicate")
+	}
+
+	// Remove writes the catalog without error.
+	if err := cat.Remove("myrepo"); err != nil {
+		t.Errorf("Remove: %v", err)
+	}
+	if _, ok := cat.Repos["myrepo"]; ok {
+		t.Errorf("repo still present after Remove")
 	}
 }
 
