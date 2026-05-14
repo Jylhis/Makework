@@ -379,6 +379,18 @@ func (c *Catalog) Sync(cfg *config.Config, scanRoots []string, opts SyncOptions)
 
 // --- Add (from local path) ---
 
+// addRequest is the input to register: enough to clone a bare and
+// create the initial worktree without committing yet to a particular
+// source flavour (local path vs URL).
+type addRequest struct {
+	repoName    string
+	bareSource  string // path or URL passed to git clone --bare
+	localFB     string // optional: fall back to cloning this path if bareSource fails (used when sourcePath has a flaky remote)
+	parsedURL   *repo.ParsedURL
+	originURL   string // non-empty → stored as origin remote
+	warnOnLocal string // optional context for the local-fallback warning
+}
+
 // Add registers a local git repo into the catalog.
 func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, error) {
 	abs, err := filepath.Abs(sourcePath)
@@ -399,69 +411,23 @@ func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, erro
 		repoName = parsed.Segments[len(parsed.Segments)-1]
 	}
 
-	if _, exists := c.Repos[repoName]; exists {
-		return repoName, false, nil
-	}
-
-	bareDest := barePath(cfg, repoName, hasParsed, &parsed)
-	if !IsContainedPath(cfg.BareRoot, bareDest) {
-		return "", false, fmt.Errorf("computed bare path escapes bare root: %s", bareDest)
-	}
-
-	if remoteURL != "" && !fsx.PathExists(bareDest) {
-		if err := repo.CloneBare(remoteURL, bareDest); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: remote unreachable for %s: %v. Falling back to local clone.\n", sourcePath, err)
-			_ = os.RemoveAll(bareDest)
-			if err := repo.CloneBare(sourcePath, bareDest); err != nil {
-				return "", false, err
-			}
-		}
-	} else if !fsx.PathExists(bareDest) {
-		if err := repo.CloneBare(sourcePath, bareDest); err != nil {
-			return "", false, err
-		}
-	}
-
-	_ = repo.Fetch(bareDest)
-	mainBranch, err := repo.GetDefaultBranch(bareDest)
-	if err != nil {
-		mainBranch = "main"
-	}
-
 	var parsedPtr *repo.ParsedURL
 	if hasParsed {
 		parsedPtr = &parsed
 	}
-	wtPath := worktree.Path(cfg.WorktreeRoot, parsedPtr, repoName, mainBranch)
-	if !IsContainedPath(cfg.WorktreeRoot, wtPath) {
-		return "", false, fmt.Errorf("computed worktree path escapes worktree root: %s", wtPath)
+	req := addRequest{
+		repoName:    repoName,
+		bareSource:  remoteURL,
+		localFB:     sourcePath,
+		parsedURL:   parsedPtr,
+		originURL:   remoteURL,
+		warnOnLocal: sourcePath,
 	}
-	if !fsx.PathExists(wtPath) {
-		_ = worktree.Create(bareDest, mainBranch, wtPath)
+	if remoteURL == "" {
+		req.bareSource = sourcePath
+		req.localFB = ""
 	}
-	_ = maintenance.Register(bareDest)
-
-	remotes := make(map[string]repo.Remote)
-	if remoteURL != "" {
-		remotes["origin"] = repo.Remote{URL: remoteURL}
-	}
-
-	r := &repo.Repository{
-		Name:       repoName,
-		Path:       bareDest,
-		MainBranch: mainBranch,
-		Remotes:    remotes,
-		Projects:   make(map[string]project.Project),
-	}
-	if remoteURL != "" {
-		r.URL = &remoteURL
-	}
-	c.Repos[repoName] = r
-
-	if err := c.Save(); err != nil {
-		return "", false, err
-	}
-	return repoName, true, nil
+	return c.register(req, cfg)
 }
 
 // AddURL registers a repo by remote URL.
@@ -474,26 +440,53 @@ func (c *Catalog) AddURL(url string, cfg *config.Config) (string, bool, error) {
 		return "", false, fmt.Errorf("cannot derive repo name from: %s", url)
 	}
 	repoName := parsed.Segments[len(parsed.Segments)-1]
-	if _, exists := c.Repos[repoName]; exists {
-		return repoName, false, nil
+	return c.register(addRequest{
+		repoName:   repoName,
+		bareSource: url,
+		parsedURL:  &parsed,
+		originURL:  url,
+	}, cfg)
+}
+
+// register is the shared core of Add and AddURL: clone a bare, fetch,
+// resolve the default branch, create the initial worktree, register
+// maintenance, and persist the catalog entry.
+func (c *Catalog) register(req addRequest, cfg *config.Config) (string, bool, error) {
+	if _, exists := c.Repos[req.repoName]; exists {
+		return req.repoName, false, nil
 	}
 
-	bareDest := barePath(cfg, repoName, true, &parsed)
+	hasParsed := req.parsedURL != nil
+	var parsedVal repo.ParsedURL
+	if hasParsed {
+		parsedVal = *req.parsedURL
+	}
+
+	bareDest := barePath(cfg, req.repoName, hasParsed, &parsedVal)
 	if !IsContainedPath(cfg.BareRoot, bareDest) {
 		return "", false, fmt.Errorf("computed bare path escapes bare root: %s", bareDest)
 	}
+
 	if !fsx.PathExists(bareDest) {
-		if err := repo.CloneBare(url, bareDest); err != nil {
-			return "", false, err
+		if err := repo.CloneBare(req.bareSource, bareDest); err != nil {
+			if req.localFB == "" {
+				return "", false, err
+			}
+			fmt.Fprintf(os.Stderr, "Warning: remote unreachable for %s: %v. Falling back to local clone.\n", req.warnOnLocal, err)
+			_ = os.RemoveAll(bareDest)
+			if err := repo.CloneBare(req.localFB, bareDest); err != nil {
+				return "", false, err
+			}
 		}
 	}
+
 	_ = repo.Fetch(bareDest)
 	mainBranch, err := repo.GetDefaultBranch(bareDest)
 	if err != nil {
 		mainBranch = "main"
 	}
 
-	wtPath := worktree.Path(cfg.WorktreeRoot, &parsed, repoName, mainBranch)
+	wtPath := worktree.Path(cfg.WorktreeRoot, req.parsedURL, req.repoName, mainBranch)
 	if !IsContainedPath(cfg.WorktreeRoot, wtPath) {
 		return "", false, fmt.Errorf("computed worktree path escapes worktree root: %s", wtPath)
 	}
@@ -502,21 +495,27 @@ func (c *Catalog) AddURL(url string, cfg *config.Config) (string, bool, error) {
 	}
 	_ = maintenance.Register(bareDest)
 
-	remotes := map[string]repo.Remote{"origin": {URL: url}}
-	urlCopy := url
+	remotes := make(map[string]repo.Remote)
+	if req.originURL != "" {
+		remotes["origin"] = repo.Remote{URL: req.originURL}
+	}
 	r := &repo.Repository{
-		Name:       repoName,
+		Name:       req.repoName,
 		Path:       bareDest,
-		URL:        &urlCopy,
 		MainBranch: mainBranch,
 		Remotes:    remotes,
 		Projects:   make(map[string]project.Project),
 	}
-	c.Repos[repoName] = r
+	if req.originURL != "" {
+		urlCopy := req.originURL
+		r.URL = &urlCopy
+	}
+	c.Repos[req.repoName] = r
+
 	if err := c.Save(); err != nil {
 		return "", false, err
 	}
-	return repoName, true, nil
+	return req.repoName, true, nil
 }
 
 // Remove deletes a repo entry from the catalog (does not delete files).
