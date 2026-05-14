@@ -21,6 +21,10 @@ func newSwitchCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ref, err = resolveBranchShortcut(ref, resolved)
+			if err != nil {
+				return err
+			}
 			wtPath := resolvedWorktreePath(cfg, resolved, ref)
 			if createBranch {
 				base := baseBranch
