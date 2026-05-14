@@ -125,19 +125,39 @@ func newGoCmd() *cobra.Command {
 			}
 
 			if resolver.NeedsDisambiguation(results, 0.10) && isTerminal() {
-				fmt.Fprintf(errOut, "Multiple matches for '%s':\n", query)
-				for i, t := range results {
-					if i >= 5 {
-						break
-					}
+				topN := results
+				if len(topN) > 5 {
+					topN = topN[:5]
+				}
+				items := make([]picker.Item, len(topN))
+				for i, t := range topN {
 					branch := t.Branch
 					if branch == "" {
 						branch = "-"
 					}
-					fmt.Fprintf(errOut, "  %d. %s (%s)\n", i+1, t.RepoName, branch)
+					items[i] = picker.Item{
+						Label: fmt.Sprintf("%s@%s", t.RepoName, branch),
+						Sub:   fmt.Sprintf("score=%.3f", t.Score),
+						Value: t,
+					}
 				}
-				fmt.Fprintln(errOut, "Use repo@branch syntax for precise routing.")
-				return fmt.Errorf("ambiguous match")
+				sel, err := picker.Pick(items, fmt.Sprintf("Multiple matches for '%s':", query), os.Stdin, errOut)
+				if err != nil {
+					return err
+				}
+				chosen := sel.Value.(resolver.Target)
+				resolved, err := cat.FindProjectUnambiguous(chosen.RepoName)
+				if err != nil {
+					return err
+				}
+				ref := refOverride
+				if ref == "" {
+					ref = chosen.Branch
+					if ref == "" {
+						ref = "main"
+					}
+				}
+				return navigateToWorktree(cfg, resolved, ref, hooksEnabled, out)
 			}
 
 			top := results[0]
