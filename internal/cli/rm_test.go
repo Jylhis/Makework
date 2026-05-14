@@ -42,7 +42,7 @@ func rmFixture(t *testing.T, branch string, diverge bool) (barePath, wtPath stri
 		t.Fatalf("mw repo add: %v\n%s", err, out)
 	}
 
-	cfg, cat := loadState()
+	cfg, cat, _ := loadState()
 	resolved, err := cat.FindProjectUnambiguous("scratch")
 	if err != nil {
 		t.Fatalf("FindProjectUnambiguous: %v", err)

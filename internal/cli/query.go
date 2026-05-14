@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/jylhis/makework/internal/fsx"
 	"github.com/jylhis/makework/internal/query"
 	"github.com/jylhis/makework/internal/worktree"
 	"github.com/spf13/cobra"
@@ -20,7 +21,10 @@ func newQueryCmd() *cobra.Command {
 		Short: "Query recent activity across projects",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, cat := loadState()
+			_, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			out := cmd.OutOrStdout()
 
 			var untilPtr, authorPtr *string
@@ -38,7 +42,7 @@ func newQueryCmd() *cobra.Command {
 					continue
 				}
 				for _, wt := range wts {
-					if wt.IsBare || !fileExistsCli(wt.Path) {
+					if wt.IsBare || !fsx.PathExists(wt.Path) {
 						continue
 					}
 					branch := wt.Branch

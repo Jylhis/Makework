@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/jylhis/makework/internal/catalog"
+	"github.com/jylhis/makework/internal/fsx"
 	"github.com/jylhis/makework/internal/xdgpath"
 	"github.com/spf13/cobra"
 )
@@ -19,15 +20,17 @@ func newSyncCmd() *cobra.Command {
 		Short: "Discover and register repos",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg := loadConfig()
-			cat := loadCatalog()
+			cfg, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			out := cmd.OutOrStdout()
 
 			scanRoots := cfg.ScanRoots
 			if len(scanRoots) == 0 {
 				dev, err := xdgpath.ExpandTilde("~/Developer")
 				if err == nil {
-					if fileExistsCli(dev) {
+					if fsx.PathExists(dev) {
 						scanRoots = []string{dev}
 					}
 				}

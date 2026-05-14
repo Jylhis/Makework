@@ -19,7 +19,10 @@ func newRmCmd() *cobra.Command {
 		Long:  "<project>/<ref> or <project>@<ref>",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cat := loadState()
+			cfg, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			out := cmd.OutOrStdout()
 			target := args[0]
 

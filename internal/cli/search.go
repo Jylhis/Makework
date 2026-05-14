@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 
+	"github.com/jylhis/makework/internal/fsx"
 	"github.com/jylhis/makework/internal/repo"
 	"github.com/jylhis/makework/internal/search"
 	"github.com/jylhis/makework/internal/worktree"
@@ -21,7 +22,10 @@ func newSearchCmd() *cobra.Command {
 		Short:   "Search across all project worktrees",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cat := loadState()
+			cfg, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			pattern := args[0]
 			out := cmd.OutOrStdout()
 
@@ -40,7 +44,7 @@ func newSearchCmd() *cobra.Command {
 					}
 				}
 				wtPath := worktree.Path(cfg.WorktreeRoot, parsedURL, repoName, r.MainBranch)
-				if !fileExistsCli(wtPath) {
+				if !fsx.PathExists(wtPath) {
 					continue
 				}
 				results := search.Worktree(wtPath, pattern, repoName, opts)

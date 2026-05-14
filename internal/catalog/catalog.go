@@ -7,16 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/jylhis/makework/internal/config"
-	"github.com/jylhis/makework/internal/maintenance"
+	"github.com/jylhis/makework/internal/fsx"
 	"github.com/jylhis/makework/internal/project"
 	"github.com/jylhis/makework/internal/repo"
-	"github.com/jylhis/makework/internal/worktree"
+	"github.com/jylhis/makework/internal/xdgpath"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -129,7 +129,63 @@ func (c *Catalog) Save() error {
 	if err := enc.Encode(c); err != nil {
 		return err
 	}
-	return os.WriteFile(path, buf.Bytes(), 0o644)
+
+	unlock, err := acquireSaveLock()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".catalog.*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		cleanup()
+		return err
+	}
+	return nil
+}
+
+// acquireSaveLock takes an exclusive POSIX advisory lock on a sidecar lock
+// file under $XDG_STATE_HOME/makework/. Concurrent Save calls serialise on
+// this lock so the atomic temp+rename below never interleaves.
+func acquireSaveLock() (func(), error) {
+	stateDir, err := xdgpath.StateDir()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return nil, err
+	}
+	lockPath := filepath.Join(stateDir, "catalog.toml.lock")
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	return func() {
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = f.Close()
+	}, nil
 }
 
 // --- Init ---
@@ -145,7 +201,7 @@ func Init(cfg *config.Config) (*InitResult, error) {
 	trackDir(cfgDir, result)
 
 	cfgPath, _ := config.Path()
-	if fileExists(cfgPath) {
+	if fsx.PathExists(cfgPath) {
 		result.AlreadyExisted = append(result.AlreadyExisted, cfgPath)
 	} else {
 		if err := cfg.Save(); err != nil {
@@ -155,7 +211,7 @@ func Init(cfg *config.Config) (*InitResult, error) {
 	}
 
 	catPath, _ := CatalogPath()
-	if fileExists(catPath) {
+	if fsx.PathExists(catPath) {
 		result.AlreadyExisted = append(result.AlreadyExisted, catPath)
 	} else {
 		empty := &Catalog{Repos: make(map[string]*repo.Repository)}
@@ -171,7 +227,7 @@ func Init(cfg *config.Config) (*InitResult, error) {
 }
 
 func trackDir(path string, result *InitResult) {
-	if fileExists(path) {
+	if fsx.PathExists(path) {
 		result.AlreadyExisted = append(result.AlreadyExisted, path)
 	} else {
 		_ = os.MkdirAll(path, 0o755)
@@ -215,7 +271,7 @@ func (c *Catalog) AllProjectNames() []string {
 	for n := range set {
 		names = append(names, n)
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
 
@@ -288,272 +344,4 @@ func (c *Catalog) FindProjectUnambiguous(name string) (*ResolvedProject, error) 
 		return nil, ErrAmbiguousProject{Name: name, Repos: names}
 	}
 	return nil, ErrRepoNotFound{Name: name}
-}
-
-// --- Sync ---
-
-// Sync discovers repos under scanRoots and registers them.
-func (c *Catalog) Sync(cfg *config.Config, scanRoots []string, opts SyncOptions) ([]string, error) {
-	var added []string
-	for _, root := range scanRoots {
-		if !fileExists(root) {
-			continue
-		}
-		repos, err := walkForRepos(root, 0, opts)
-		if err != nil {
-			return added, err
-		}
-		for _, rp := range repos {
-			name, isNew, err := c.Add(rp, cfg)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: skipping %s: %v\n", rp, err)
-				continue
-			}
-			if isNew {
-				added = append(added, name)
-			}
-		}
-	}
-	return added, nil
-}
-
-// --- Add (from local path) ---
-
-// Add registers a local git repo into the catalog.
-func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, error) {
-	abs, err := filepath.Abs(sourcePath)
-	if err != nil {
-		return "", false, err
-	}
-	sourcePath = abs
-
-	if !fileExists(filepath.Join(sourcePath, ".git")) && !fileExists(filepath.Join(sourcePath, "HEAD")) {
-		return "", false, ErrNotGitRepo{Path: sourcePath}
-	}
-
-	remoteURL := getOriginURL(sourcePath)
-	parsed, hasParsed := repo.ParseRemoteURL(remoteURL)
-
-	repoName := filepath.Base(sourcePath)
-	if hasParsed && len(parsed.Segments) > 0 {
-		repoName = parsed.Segments[len(parsed.Segments)-1]
-	}
-
-	if _, exists := c.Repos[repoName]; exists {
-		return repoName, false, nil
-	}
-
-	bareDest := barePath(cfg, repoName, hasParsed, &parsed)
-	if !IsContainedPath(cfg.BareRoot, bareDest) {
-		return "", false, fmt.Errorf("computed bare path escapes bare root: %s", bareDest)
-	}
-
-	if remoteURL != "" && !fileExists(bareDest) {
-		if err := repo.CloneBare(remoteURL, bareDest); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: remote unreachable for %s: %v. Falling back to local clone.\n", sourcePath, err)
-			_ = os.RemoveAll(bareDest)
-			if err := repo.CloneBare(sourcePath, bareDest); err != nil {
-				return "", false, err
-			}
-		}
-	} else if !fileExists(bareDest) {
-		if err := repo.CloneBare(sourcePath, bareDest); err != nil {
-			return "", false, err
-		}
-	}
-
-	_ = repo.Fetch(bareDest)
-	mainBranch, err := repo.GetDefaultBranch(bareDest)
-	if err != nil {
-		mainBranch = "main"
-	}
-
-	var parsedPtr *repo.ParsedURL
-	if hasParsed {
-		parsedPtr = &parsed
-	}
-	wtPath := worktree.Path(cfg.WorktreeRoot, parsedPtr, repoName, mainBranch)
-	if !IsContainedPath(cfg.WorktreeRoot, wtPath) {
-		return "", false, fmt.Errorf("computed worktree path escapes worktree root: %s", wtPath)
-	}
-	if !fileExists(wtPath) {
-		_ = worktree.Create(bareDest, mainBranch, wtPath)
-	}
-	_ = maintenance.Register(bareDest)
-
-	remotes := make(map[string]repo.Remote)
-	if remoteURL != "" {
-		remotes["origin"] = repo.Remote{URL: remoteURL}
-	}
-
-	r := &repo.Repository{
-		Name:       repoName,
-		Path:       bareDest,
-		MainBranch: mainBranch,
-		Remotes:    remotes,
-		Projects:   make(map[string]project.Project),
-	}
-	if remoteURL != "" {
-		r.URL = &remoteURL
-	}
-	c.Repos[repoName] = r
-
-	if err := c.Save(); err != nil {
-		return "", false, err
-	}
-	return repoName, true, nil
-}
-
-// AddURL registers a repo by remote URL.
-func (c *Catalog) AddURL(url string, cfg *config.Config) (string, bool, error) {
-	parsed, ok := repo.ParseRemoteURL(url)
-	if !ok {
-		return "", false, fmt.Errorf("invalid git URL: %s", url)
-	}
-	if len(parsed.Segments) == 0 {
-		return "", false, fmt.Errorf("cannot derive repo name from: %s", url)
-	}
-	repoName := parsed.Segments[len(parsed.Segments)-1]
-	if _, exists := c.Repos[repoName]; exists {
-		return repoName, false, nil
-	}
-
-	bareDest := barePath(cfg, repoName, true, &parsed)
-	if !IsContainedPath(cfg.BareRoot, bareDest) {
-		return "", false, fmt.Errorf("computed bare path escapes bare root: %s", bareDest)
-	}
-	if !fileExists(bareDest) {
-		if err := repo.CloneBare(url, bareDest); err != nil {
-			return "", false, err
-		}
-	}
-	_ = repo.Fetch(bareDest)
-	mainBranch, err := repo.GetDefaultBranch(bareDest)
-	if err != nil {
-		mainBranch = "main"
-	}
-
-	wtPath := worktree.Path(cfg.WorktreeRoot, &parsed, repoName, mainBranch)
-	if !IsContainedPath(cfg.WorktreeRoot, wtPath) {
-		return "", false, fmt.Errorf("computed worktree path escapes worktree root: %s", wtPath)
-	}
-	if !fileExists(wtPath) {
-		_ = worktree.Create(bareDest, mainBranch, wtPath)
-	}
-	_ = maintenance.Register(bareDest)
-
-	remotes := map[string]repo.Remote{"origin": {URL: url}}
-	urlCopy := url
-	r := &repo.Repository{
-		Name:       repoName,
-		Path:       bareDest,
-		URL:        &urlCopy,
-		MainBranch: mainBranch,
-		Remotes:    remotes,
-		Projects:   make(map[string]project.Project),
-	}
-	c.Repos[repoName] = r
-	if err := c.Save(); err != nil {
-		return "", false, err
-	}
-	return repoName, true, nil
-}
-
-// Remove deletes a repo entry from the catalog (does not delete files).
-func (c *Catalog) Remove(name string) error {
-	if _, ok := c.Repos[name]; !ok {
-		return ErrRepoNotFound{Name: name}
-	}
-	delete(c.Repos, name)
-	return c.Save()
-}
-
-// --- Helpers ---
-
-func barePath(cfg *config.Config, repoName string, hasParsed bool, parsed *repo.ParsedURL) string {
-	if hasParsed {
-		parts := []string{cfg.BareRoot, parsed.Host}
-		for i, seg := range parsed.Segments {
-			if i == len(parsed.Segments)-1 {
-				parts = append(parts, seg+".git")
-			} else {
-				parts = append(parts, seg)
-			}
-		}
-		return filepath.Join(parts...)
-	}
-	return filepath.Join(cfg.BareRoot, "local", repoName+".git")
-}
-
-func getOriginURL(dir string) string {
-	out, err := exec.Command("git", "-C", dir, "remote", "get-url", "origin").Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// IsContainedPath reports whether path resolves to a location inside root
-// (or equal to root). It uses filepath.Rel for lexical comparison; both
-// sides should already be absolute, or be safe to interpret relative to
-// the current working directory.
-func IsContainedPath(root, path string) bool {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-func walkForRepos(dir string, depth uint32, opts SyncOptions) ([]string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-	var repos []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		excluded := false
-		for _, pat := range opts.Exclude {
-			if pat == name {
-				excluded = true
-				break
-			}
-		}
-		if excluded {
-			continue
-		}
-		path := filepath.Join(dir, name)
-		dotGit := filepath.Join(path, ".git")
-
-		// Submodule: .git is a file, not dir → skip
-		if info, err := os.Lstat(dotGit); err == nil && !info.IsDir() {
-			continue
-		}
-		// Bare repo: HEAD + objects/ exist but no .git → skip
-		if !fileExists(dotGit) && fileExists(filepath.Join(path, "HEAD")) && fileExists(filepath.Join(path, "objects")) {
-			continue
-		}
-		// Real repo
-		if info, err := os.Stat(dotGit); err == nil && info.IsDir() {
-			repos = append(repos, path)
-			continue
-		}
-		if depth+1 < opts.MaxDepth {
-			sub, err := walkForRepos(path, depth+1, opts)
-			if err != nil {
-				return repos, err
-			}
-			repos = append(repos, sub...)
-		}
-	}
-	return repos, nil
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }

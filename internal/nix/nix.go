@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jylhis/makework/internal/fsx"
 	"github.com/jylhis/makework/internal/project"
 )
 
@@ -37,13 +38,13 @@ func Detect(dir string, explicit *project.NixConfig) *Detected {
 		}
 	}
 
-	if fileExists(filepath.Join(dir, "flake.nix")) {
+	if fsx.PathExists(filepath.Join(dir, "flake.nix")) {
 		return &Detected{NixType: project.NixFlake, ActivationCommand: "nix develop"}
 	}
-	if fileExists(filepath.Join(dir, "shell.nix")) {
+	if fsx.PathExists(filepath.Join(dir, "shell.nix")) {
 		return &Detected{NixType: project.NixClassic, ActivationCommand: "nix-shell"}
 	}
-	if fileExists(filepath.Join(dir, "devenv.nix")) {
+	if fsx.PathExists(filepath.Join(dir, "devenv.nix")) {
 		return &Detected{NixType: project.NixDevenv, ActivationCommand: "devenv shell"}
 	}
 	if d := checkEnvrc(dir); d != nil {
@@ -67,11 +68,6 @@ func activationFor(nt project.NixType, devshell string) string {
 		return "echo 'custom nix setup'"
 	}
 	return ""
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }
 
 func checkEnvrc(dir string) *Detected {

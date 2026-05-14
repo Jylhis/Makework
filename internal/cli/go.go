@@ -9,6 +9,7 @@ import (
 
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/config"
+	"github.com/jylhis/makework/internal/fsx"
 	"github.com/jylhis/makework/internal/hook"
 	"github.com/jylhis/makework/internal/nix"
 	"github.com/jylhis/makework/internal/picker"
@@ -24,12 +25,17 @@ import (
 
 func newGoCmd() *cobra.Command {
 	var list bool
+	var allowHooks bool
 	cmd := &cobra.Command{
 		Use:   "go [project] [ref]",
 		Short: "Navigate to a project worktree (supports fuzzy matching)",
 		Args:  cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cat := loadState()
+			cfg, cat, err := loadState()
+			if err != nil {
+				return err
+			}
+			hooksEnabled := allowHooks || cfg.AllowHooks
 			out := cmd.OutOrStdout()
 			errOut := cmd.ErrOrStderr()
 
@@ -58,7 +64,7 @@ func newGoCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return navigateToWorktree(cfg, resolved, resolved.Repo.MainBranch, out)
+				return navigateToWorktree(cfg, resolved, resolved.Repo.MainBranch, hooksEnabled, out)
 			}
 
 			query := args[0]
@@ -77,7 +83,7 @@ func newGoCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return navigateToWorktree(cfg, resolved, parsed.Branch, out)
+				return navigateToWorktree(cfg, resolved, parsed.Branch, hooksEnabled, out)
 			}
 
 			// Fast path: exact catalog match
@@ -87,7 +93,7 @@ func newGoCmd() *cobra.Command {
 					if ref == "" {
 						ref = resolved.Repo.MainBranch
 					}
-					return navigateToWorktree(cfg, resolved, ref, out)
+					return navigateToWorktree(cfg, resolved, ref, hooksEnabled, out)
 				}
 			}
 
@@ -122,19 +128,39 @@ func newGoCmd() *cobra.Command {
 			}
 
 			if resolver.NeedsDisambiguation(results, 0.10) && isTerminal() {
-				fmt.Fprintf(errOut, "Multiple matches for '%s':\n", query)
-				for i, t := range results {
-					if i >= 5 {
-						break
-					}
+				topN := results
+				if len(topN) > 5 {
+					topN = topN[:5]
+				}
+				items := make([]picker.Item, len(topN))
+				for i, t := range topN {
 					branch := t.Branch
 					if branch == "" {
 						branch = "-"
 					}
-					fmt.Fprintf(errOut, "  %d. %s (%s)\n", i+1, t.RepoName, branch)
+					items[i] = picker.Item{
+						Label: fmt.Sprintf("%s@%s", t.RepoName, branch),
+						Sub:   fmt.Sprintf("score=%.3f", t.Score),
+						Value: t,
+					}
 				}
-				fmt.Fprintln(errOut, "Use repo@branch syntax for precise routing.")
-				return fmt.Errorf("ambiguous match")
+				sel, err := picker.Pick(items, fmt.Sprintf("Multiple matches for '%s':", query), os.Stdin, errOut)
+				if err != nil {
+					return err
+				}
+				chosen := sel.Value.(resolver.Target)
+				resolved, err := cat.FindProjectUnambiguous(chosen.RepoName)
+				if err != nil {
+					return err
+				}
+				ref := refOverride
+				if ref == "" {
+					ref = chosen.Branch
+					if ref == "" {
+						ref = "main"
+					}
+				}
+				return navigateToWorktree(cfg, resolved, ref, hooksEnabled, out)
 			}
 
 			top := results[0]
@@ -158,10 +184,11 @@ func newGoCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&list, "list", false, "Show all matches with scores instead of navigating")
+	cmd.Flags().BoolVar(&allowHooks, "allow-hooks", false, "Run post-create hooks from .makework.toml (off by default; equivalent to config allow_hooks=true)")
 	return silenceSubcommand(cmd)
 }
 
-func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, ref string, out io.Writer) error {
+func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, ref string, hooksEnabled bool, out io.Writer) error {
 	resolvedRef, err := resolveBranchShortcut(ref, resolved)
 	if err != nil {
 		return err
@@ -170,7 +197,7 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 	wtPath := resolvedWorktreePath(cfg, resolved, ref)
 
 	newlyCreated := false
-	if !fileExistsCli(wtPath) {
+	if !fsx.PathExists(wtPath) {
 		if err := worktree.Create(resolved.Repo.Path, ref, wtPath); err != nil {
 			return err
 		}
@@ -186,7 +213,7 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 	}
 
 	if newlyCreated {
-		runPostCreateHooks(wtPath, resolved.Repo.Name, ref, os.Stderr)
+		runPostCreateHooks(wtPath, resolved.Repo.Name, ref, hooksEnabled, os.Stderr)
 	}
 
 	finalPath := wtPath
@@ -246,7 +273,12 @@ func resolveBranchShortcut(ref string, resolved *catalog.ResolvedProject) (strin
 // runs the configured post-create commands. Errors are logged to out
 // but do not fail the worktree creation, since the worktree itself is
 // already usable.
-func runPostCreateHooks(wtPath, repoName, branch string, out io.Writer) {
+//
+// Hooks come from repo contents and are therefore untrusted by default.
+// When enabled is false and the file declares any post-create commands,
+// the commands are skipped with a one-line warning telling the user
+// how to opt in.
+func runPostCreateHooks(wtPath, repoName, branch string, enabled bool, out io.Writer) {
 	data, err := os.ReadFile(filepath.Join(wtPath, ".makework.toml"))
 	if err != nil {
 		return
@@ -257,6 +289,14 @@ func runPostCreateHooks(wtPath, repoName, branch string, out io.Writer) {
 		return
 	}
 	if len(p.Hooks.PostCreate) == 0 {
+		return
+	}
+	if !enabled {
+		fmt.Fprintf(out,
+			"Skipping %d post-create hook(s) in %s (untrusted by default).\n"+
+				"To run, re-invoke with --allow-hooks or set 'allow_hooks = true' in config.\n",
+			len(p.Hooks.PostCreate), filepath.Join(wtPath, ".makework.toml"),
+		)
 		return
 	}
 	env := map[string]string{

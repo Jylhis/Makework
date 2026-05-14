@@ -19,7 +19,10 @@ func newResolverCmd() *cobra.Command {
 			Short: "Show resolver scoring breakdown for a query",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				cfg, cat := loadState()
+				cfg, cat, err := loadState()
+				if err != nil {
+					return err
+				}
 				out := cmd.OutOrStdout()
 				query := args[0]
 

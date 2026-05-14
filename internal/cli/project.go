@@ -43,7 +43,10 @@ func newProjectCmd() *cobra.Command {
 			Short: "Show project metadata resolved from catalog",
 			Args:  cobra.MaximumNArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				_, cat := loadState()
+				_, cat, err := loadState()
+				if err != nil {
+					return err
+				}
 				if len(args) == 0 {
 					return fmt.Errorf("please specify a project name")
 				}

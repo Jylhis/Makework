@@ -24,7 +24,10 @@ func newInitCmd() *cobra.Command {
 }
 
 func runCatalogInit(cmd *cobra.Command) error {
-	cfg := loadConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
 	result, err := catalog.Init(cfg)
 	if err != nil {
 		return err

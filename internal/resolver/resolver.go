@@ -3,13 +3,12 @@
 package resolver
 
 import (
-	"encoding/json"
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -17,6 +16,7 @@ import (
 	"github.com/agnivade/levenshtein"
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/config"
+	"github.com/jylhis/makework/internal/query"
 )
 
 // --- Types ---
@@ -53,6 +53,9 @@ type CatalogTarget struct {
 	Branch      string
 	ProjectName string
 	Path        string
+	// Activity is a unit-less recency-of-commits signal for this
+	// repo+branch, populated by BuildTargets via query.LogWorktree.
+	Activity float64
 }
 
 type ResolveContext struct {
@@ -113,116 +116,6 @@ func ParseQuery(query string) (ParsedQuery, error) {
 		return ParsedQuery{Repo: repo, Branch: branch}, nil
 	}
 	return ParsedQuery{Fuzzy: query}, nil
-}
-
-// --- Visits DB ---
-
-type VisitEntry struct {
-	Key         string  `json:"key"`
-	Score       float64 `json:"score"`
-	LastVisited uint64  `json:"last_visited"`
-}
-
-type VisitsDB struct {
-	Entries []VisitEntry `json:"entries"`
-	MaxAge  float64      `json:"max_age"`
-}
-
-func NewVisitsDB() VisitsDB {
-	return VisitsDB{MaxAge: 10000.0}
-}
-
-func LoadVisits(path string) (VisitsDB, error) {
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return NewVisitsDB(), nil
-	}
-	if err != nil {
-		return VisitsDB{}, err
-	}
-	var db VisitsDB
-	if err := json.Unmarshal(data, &db); err != nil {
-		return VisitsDB{}, fmt.Errorf("visits.json parse error: %w", err)
-	}
-	if db.MaxAge == 0 {
-		db.MaxAge = 10000.0
-	}
-	return db, nil
-}
-
-func (db *VisitsDB) Save(path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(db, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
-}
-
-func (db *VisitsDB) RecordVisit(key string, now uint64) {
-	for i, e := range db.Entries {
-		if e.Key == key {
-			db.Entries[i].Score += 1.0
-			db.Entries[i].LastVisited = now
-			db.Compact()
-			return
-		}
-	}
-	db.Entries = append(db.Entries, VisitEntry{Key: key, Score: 1.0, LastVisited: now})
-	db.Compact()
-}
-
-func (db *VisitsDB) Compact() {
-	var total float64
-	for _, e := range db.Entries {
-		total += e.Score
-	}
-	if total <= db.MaxAge {
-		return
-	}
-	target := db.MaxAge * 0.9
-	k := total / target
-	for i := range db.Entries {
-		db.Entries[i].Score /= k
-	}
-	filtered := db.Entries[:0]
-	for _, e := range db.Entries {
-		if e.Score >= 1.0 {
-			filtered = append(filtered, e)
-		}
-	}
-	db.Entries = filtered
-}
-
-func (db *VisitsDB) FrecencyScore(key string, now uint64) float64 {
-	for _, e := range db.Entries {
-		if e.Key == key {
-			elapsed := float64(now - e.LastVisited)
-			timeWeight := 1.0 / (1.0 + elapsed/3600.0)
-			return e.Score * timeWeight
-		}
-	}
-	return 0
-}
-
-func (db *VisitsDB) FrecencyScoreWithSiblings(key, repoPrefix string, now uint64) float64 {
-	var score float64
-	for _, e := range db.Entries {
-		elapsed := float64(now - e.LastVisited)
-		timeWeight := 1.0 / (1.0 + elapsed/3600.0)
-		if e.Key == key {
-			score += e.Score * timeWeight
-		} else if strings.HasPrefix(e.Key, repoPrefix) {
-			score += e.Score * timeWeight * 0.5
-		}
-	}
-	return score
 }
 
 // --- Scoring ---
@@ -287,7 +180,7 @@ func scoreTarget(t *CatalogTarget, query string, visits *VisitsDB, cfg *config.R
 	repoPrefix := t.RepoName + ":"
 	frecency := visits.FrecencyScoreWithSiblings(visitKey, repoPrefix, ctx.Now)
 
-	activity := 0.0
+	activity := t.Activity
 
 	contextScore := 0.0
 	if ctx.Cwd != "" {
@@ -349,8 +242,8 @@ func Resolve(query string, index *Index, cfg *config.ResolverConfig, ctx *Resolv
 		})
 	}
 
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
+	slices.SortFunc(results, func(a, b Target) int {
+		return cmp.Compare(b.Score, a.Score)
 	})
 
 	if len(results) == 0 {
@@ -371,14 +264,26 @@ func NeedsDisambiguation(results []Target, threshold float64) bool {
 	return (top-second)/top < threshold
 }
 
-// BuildTargets creates CatalogTarget entries from a Catalog.
+// BuildTargets creates CatalogTarget entries from a Catalog and
+// annotates each with a recent-activity score derived from one
+// `git log --since=30.days.ago` call per repo against the default
+// branch. Errors are swallowed (activity stays 0) so a flaky repo
+// can't break resolution.
 func BuildTargets(cat *catalog.Catalog) []CatalogTarget {
+	activity := make(map[string]float64, len(cat.Repos))
+	for repoName, r := range cat.Repos {
+		entries := query.LogWorktree(r.Path, r.MainBranch, repoName, "30.days.ago", nil, nil)
+		activity[repoName] = math.Log1p(float64(len(entries)))
+	}
+
 	var targets []CatalogTarget
 	for repoName, r := range cat.Repos {
+		act := activity[repoName]
 		targets = append(targets, CatalogTarget{
 			RepoName: repoName,
 			Branch:   r.MainBranch,
 			Path:     r.Path,
+			Activity: act,
 		})
 		for projName, proj := range r.Projects {
 			if projName != repoName {
@@ -387,6 +292,7 @@ func BuildTargets(cat *catalog.Catalog) []CatalogTarget {
 					Branch:      r.MainBranch,
 					ProjectName: projName,
 					Path:        r.Path,
+					Activity:    act,
 				})
 			}
 			for subName, sub := range proj.Subprojects {
@@ -395,6 +301,7 @@ func BuildTargets(cat *catalog.Catalog) []CatalogTarget {
 					Branch:      r.MainBranch,
 					ProjectName: subName,
 					Path:        filepath.Join(r.Path, sub.SubprojectPath),
+					Activity:    act,
 				})
 			}
 		}

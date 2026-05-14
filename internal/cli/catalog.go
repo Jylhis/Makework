@@ -32,11 +32,13 @@ func newRepoAdd() *cobra.Command {
 		Short: "Register a repo from a URL or local path",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cat := loadState()
+			cfg, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			source := args[0]
 			var name string
 			var isNew bool
-			var err error
 
 			if _, ok := repo.ParseRemoteURL(source); ok {
 				name, isNew, err = cat.AddURL(source, cfg)
@@ -63,7 +65,10 @@ func newRepoList() *cobra.Command {
 		Short: "List registered repos",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, cat := loadState()
+			_, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			out := cmd.OutOrStdout()
 			if len(cat.Repos) == 0 {
 				fmt.Fprintln(out, "No repositories registered.")
@@ -96,7 +101,10 @@ func newRepoRm() *cobra.Command {
 		Short: "Unregister a repo",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cat := loadState()
+			cfg, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			name := args[0]
 			if r, ok := cat.Repos[name]; ok {
 				if wts, err := worktree.List(r.Path); err == nil {
@@ -140,8 +148,7 @@ func newRepoEdit() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			editFile(path)
-			return nil
+			return editFile(path)
 		},
 	})
 }
@@ -152,7 +159,10 @@ func newRepoPurge() *cobra.Command {
 		Short: "Remove all worktrees and unregister a repo",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cat := loadState()
+			cfg, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			name := args[0]
 			r, ok := cat.Repos[name]
 			if !ok {
@@ -192,9 +202,4 @@ func newRepoPurge() *cobra.Command {
 			return nil
 		},
 	})
-}
-
-func fileExistsCli(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }

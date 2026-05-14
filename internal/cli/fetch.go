@@ -13,7 +13,10 @@ func newFetchCmd() *cobra.Command {
 		Short: "Fetch updates for one or all repos",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, cat := loadState()
+			_, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			out := cmd.OutOrStdout()
 			errOut := cmd.ErrOrStderr()
 

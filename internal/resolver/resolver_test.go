@@ -325,6 +325,26 @@ func TestResolveFrecencyBoost(t *testing.T) {
 	}
 }
 
+// TestResolveActivityBoost: two equally-fuzzy candidates differ only
+// in their Activity; the higher-activity one ranks first.
+func TestResolveActivityBoost(t *testing.T) {
+	a := makeTarget("backend", "main", "/repos/backend")
+	b := makeTarget("frontend", "main", "/repos/frontend")
+	a.Activity = 0
+	b.Activity = 5 // log1p(~150 commits)
+	index := &Index{
+		Targets: []CatalogTarget{a, b},
+		Visits:  NewVisitsDB(),
+	}
+	results, err := Resolve("end", index, defaultCfg(), defaultCtx(10000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].RepoName != "frontend" {
+		t.Errorf("activity should boost frontend, got %s (scores: %+v)", results[0].RepoName, results)
+	}
+}
+
 func TestResolveEmptyCatalog(t *testing.T) {
 	index := &Index{Visits: NewVisitsDB()}
 	_, err := Resolve("test", index, defaultCfg(), defaultCtx(10000))

@@ -65,6 +65,7 @@ type Config struct {
 	SyncMaxDepth *uint32         `toml:"sync_max_depth,omitempty"`
 	SyncExclude  []string        `toml:"sync_exclude,omitempty"`
 	TemplateDir  *string         `toml:"template_dir,omitempty"`
+	AllowHooks   bool            `toml:"allow_hooks,omitempty"`
 	Resolver     *ResolverConfig `toml:"resolver,omitempty"`
 }
 
@@ -77,7 +78,7 @@ type configFile struct {
 type ErrUnknownKey struct{ Key string }
 
 func (e ErrUnknownKey) Error() string {
-	return fmt.Sprintf("unknown config key: %s (supported: worktree_root, bare_root, scan_roots, sync_max_depth, sync_exclude, template_dir)", e.Key)
+	return fmt.Sprintf("unknown config key: %s (supported: worktree_root, bare_root, scan_roots, sync_max_depth, sync_exclude, template_dir, allow_hooks)", e.Key)
 }
 
 // Defaults returns the default config, deriving paths from XDG.
@@ -291,6 +292,12 @@ func applySet(c *Config, key, value string) error {
 			return err
 		}
 		c.TemplateDir = &v
+	case "allow_hooks":
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("invalid bool: %w", err)
+		}
+		c.AllowHooks = b
 	default:
 		return ErrUnknownKey{Key: key}
 	}

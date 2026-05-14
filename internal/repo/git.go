@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"sort"
+	"slices"
 	"strings"
 )
 
@@ -78,7 +78,7 @@ func ListBranches(barePath string) ([]string, error) {
 			result = append(result, trimmed)
 		}
 	}
-	sort.Strings(result)
+	slices.Sort(result)
 	return result, nil
 }
 
