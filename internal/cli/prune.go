@@ -13,7 +13,10 @@ func newPruneCmd() *cobra.Command {
 		Short: "Prune orphaned worktrees whose directories no longer exist",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, cat := loadState()
+			_, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			out := cmd.OutOrStdout()
 
 			anyPruned := false

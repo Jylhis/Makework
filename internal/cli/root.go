@@ -63,8 +63,9 @@ func Execute() {
 	os.Exit(Main())
 }
 
-// silenceSubcommand marks a command as quiet on errors so our own `Die`
-// output is the only thing users see. Apply to every leaf `*cobra.Command`.
+// silenceSubcommand marks a command as quiet on errors so Main's
+// own "Error: ..." print is the only thing users see. Apply to every
+// leaf `*cobra.Command`.
 func silenceSubcommand(c *cobra.Command) *cobra.Command {
 	c.SilenceErrors = true
 	c.SilenceUsage = true

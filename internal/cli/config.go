@@ -22,7 +22,10 @@ func newConfigCmd() *cobra.Command {
 			Short: "Print the effective config",
 			Args:  cobra.NoArgs,
 			RunE: func(cmd *cobra.Command, args []string) error {
-				cfg := loadConfig()
+				cfg, err := loadConfig()
+				if err != nil {
+					return err
+				}
 				entries, err := cfg.Show()
 				if err != nil {
 					return err
@@ -56,8 +59,7 @@ func newConfigCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				editFile(path)
-				return nil
+				return editFile(path)
 			},
 		}),
 	)

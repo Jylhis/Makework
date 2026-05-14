@@ -31,7 +31,10 @@ func newGoCmd() *cobra.Command {
 		Short: "Navigate to a project worktree (supports fuzzy matching)",
 		Args:  cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cat := loadState()
+			cfg, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			hooksEnabled := allowHooks || cfg.AllowHooks
 			out := cmd.OutOrStdout()
 			errOut := cmd.ErrOrStderr()

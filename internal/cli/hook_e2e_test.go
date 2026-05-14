@@ -46,7 +46,7 @@ post-create = ["echo $MW_BRANCH > HOOK_RAN.txt"]
 		t.Fatalf("mw repo add: %v\n%s", err, out)
 	}
 
-	cfg, cat := loadState()
+	cfg, cat, _ := loadState()
 	resolved, _ := cat.FindProjectUnambiguous("scratch")
 	wtPath := resolvedWorktreePath(cfg, resolved, "feature")
 
@@ -96,7 +96,7 @@ post-create = ["echo $MW_BRANCH > HOOK_RAN.txt"]
 		t.Fatalf("mw repo add: %v\n%s", err, out)
 	}
 
-	cfg, cat := loadState()
+	cfg, cat, _ := loadState()
 	resolved, _ := cat.FindProjectUnambiguous("scratch")
 	wtPath := resolvedWorktreePath(cfg, resolved, "feature")
 

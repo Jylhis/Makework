@@ -15,24 +15,34 @@ import (
 	"github.com/jylhis/makework/internal/xdgpath"
 )
 
-func loadConfig() *config.Config {
+func loadConfig() (*config.Config, error) {
 	cfg, err := config.Load()
 	if err != nil {
-		Die("loading config: %v", err)
+		return nil, fmt.Errorf("loading config: %w", err)
 	}
-	return cfg
+	return cfg, nil
 }
 
-func loadCatalog() *catalog.Catalog {
+func loadCatalog() (*catalog.Catalog, error) {
 	cat, err := catalog.Load()
 	if err != nil {
-		Die("loading catalog: %v", err)
+		return nil, fmt.Errorf("loading catalog: %w", err)
 	}
-	return cat
+	return cat, nil
 }
 
-func loadState() (*config.Config, *catalog.Catalog) {
-	return loadConfig(), loadCatalog()
+// loadState loads the global config and catalog. Returns the error
+// from either to the caller (Cobra surfaces it via RunE).
+func loadState() (*config.Config, *catalog.Catalog, error) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return nil, nil, err
+	}
+	cat, err := loadCatalog()
+	if err != nil {
+		return nil, nil, err
+	}
+	return cfg, cat, nil
 }
 
 func visitsPath() string {
@@ -111,7 +121,7 @@ func writeRepoRootsCache(cat *catalog.Catalog) {
 	}
 }
 
-func editFile(path string) {
+func editFile(path string) error {
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
 		editor = "vi"
@@ -121,8 +131,9 @@ func editFile(path string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		Die("editor exited with non-zero status")
+		return fmt.Errorf("editor exited with non-zero status: %w", err)
 	}
+	return nil
 }
 
 func resolvedWorktreePath(cfg *config.Config, resolved *catalog.ResolvedProject, ref string) string {

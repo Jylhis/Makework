@@ -22,7 +22,10 @@ func newSearchCmd() *cobra.Command {
 		Short:   "Search across all project worktrees",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cat := loadState()
+			cfg, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			pattern := args[0]
 			out := cmd.OutOrStdout()
 

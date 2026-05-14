@@ -15,7 +15,10 @@ func newSwitchCmd() *cobra.Command {
 		Short: "Create a new worktree",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, cat := loadState()
+			cfg, cat, err := loadState()
+			if err != nil {
+				return err
+			}
 			project, ref := args[0], args[1]
 			resolved, err := cat.FindProjectUnambiguous(project)
 			if err != nil {
