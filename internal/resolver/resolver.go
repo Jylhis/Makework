@@ -16,6 +16,7 @@ import (
 	"github.com/agnivade/levenshtein"
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/config"
+	"github.com/jylhis/makework/internal/query"
 )
 
 // --- Types ---
@@ -52,6 +53,9 @@ type CatalogTarget struct {
 	Branch      string
 	ProjectName string
 	Path        string
+	// Activity is a unit-less recency-of-commits signal for this
+	// repo+branch, populated by BuildTargets via query.LogWorktree.
+	Activity float64
 }
 
 type ResolveContext struct {
@@ -176,7 +180,7 @@ func scoreTarget(t *CatalogTarget, query string, visits *VisitsDB, cfg *config.R
 	repoPrefix := t.RepoName + ":"
 	frecency := visits.FrecencyScoreWithSiblings(visitKey, repoPrefix, ctx.Now)
 
-	activity := 0.0
+	activity := t.Activity
 
 	contextScore := 0.0
 	if ctx.Cwd != "" {
@@ -260,14 +264,26 @@ func NeedsDisambiguation(results []Target, threshold float64) bool {
 	return (top-second)/top < threshold
 }
 
-// BuildTargets creates CatalogTarget entries from a Catalog.
+// BuildTargets creates CatalogTarget entries from a Catalog and
+// annotates each with a recent-activity score derived from one
+// `git log --since=30.days.ago` call per repo against the default
+// branch. Errors are swallowed (activity stays 0) so a flaky repo
+// can't break resolution.
 func BuildTargets(cat *catalog.Catalog) []CatalogTarget {
+	activity := make(map[string]float64, len(cat.Repos))
+	for repoName, r := range cat.Repos {
+		entries := query.LogWorktree(r.Path, r.MainBranch, repoName, "30.days.ago", nil, nil)
+		activity[repoName] = math.Log1p(float64(len(entries)))
+	}
+
 	var targets []CatalogTarget
 	for repoName, r := range cat.Repos {
+		act := activity[repoName]
 		targets = append(targets, CatalogTarget{
 			RepoName: repoName,
 			Branch:   r.MainBranch,
 			Path:     r.Path,
+			Activity: act,
 		})
 		for projName, proj := range r.Projects {
 			if projName != repoName {
@@ -276,6 +292,7 @@ func BuildTargets(cat *catalog.Catalog) []CatalogTarget {
 					Branch:      r.MainBranch,
 					ProjectName: projName,
 					Path:        r.Path,
+					Activity:    act,
 				})
 			}
 			for subName, sub := range proj.Subprojects {
@@ -284,6 +301,7 @@ func BuildTargets(cat *catalog.Catalog) []CatalogTarget {
 					Branch:      r.MainBranch,
 					ProjectName: subName,
 					Path:        filepath.Join(r.Path, sub.SubprojectPath),
+					Activity:    act,
 				})
 			}
 		}
