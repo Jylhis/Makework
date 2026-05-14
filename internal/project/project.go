@@ -24,6 +24,15 @@ type Project struct {
 	Name        string                `toml:"name"`
 	Tags        []string              `toml:"tags,omitempty"`
 	Subprojects map[string]Subproject `toml:"subprojects,omitempty"`
+	Hooks       Hooks                 `toml:"hooks,omitempty"`
+}
+
+// Hooks holds the small set of lifecycle hooks supported by mw.
+// PostCreate commands run via `sh -c` in the new worktree after it is
+// created. No template engine; mw provides MW_WORKTREE_PATH, MW_BRANCH,
+// and MW_REPO via the process environment instead.
+type Hooks struct {
+	PostCreate []string `toml:"post-create,omitempty"`
 }
 
 // Subproject is a nested component inside a repo (e.g. a monorepo package).
