@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -385,7 +386,7 @@ func (c *Catalog) Add(sourcePath string, cfg *config.Config) (string, bool, erro
 	}
 	sourcePath = abs
 
-	if !fileExists(filepath.Join(sourcePath, ".git")) && !fileExists(filepath.Join(sourcePath, "HEAD")) {
+	if !isGitRepo(sourcePath) {
 		return "", false, ErrNotGitRepo{Path: sourcePath}
 	}
 
@@ -614,4 +615,19 @@ func walkForRepos(dir string, depth uint32, opts SyncOptions) ([]string, error) 
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// isGitRepo asks git itself whether path is a working tree or bare repo.
+// Replaces a stat-based heuristic (`.git` or `HEAD` exists) that was
+// trivially spoofable: any directory with an attacker-placed `HEAD`
+// file would pass, and then `git clone --bare <path>` would run against
+// it.
+func isGitRepo(path string) bool {
+	if fi, err := os.Stat(path); err != nil || !fi.IsDir() {
+		return false
+	}
+	cmd := exec.Command("git", "-C", path, "rev-parse", "--git-dir")
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	return cmd.Run() == nil
 }

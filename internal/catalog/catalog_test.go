@@ -2,6 +2,8 @@ package catalog
 
 import (
 	"errors"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -190,6 +192,26 @@ func TestCatalogSaveConcurrent(t *testing.T) {
 	}
 	if len(loaded.Repos) != 1 || loaded.Repos["repo"] == nil {
 		t.Fatalf("post-concurrent catalog corrupted: %+v", loaded.Repos)
+	}
+}
+
+func TestIsGitRepoRejectsSpoofedHEAD(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if isGitRepo(dir) {
+		t.Errorf("isGitRepo accepted dir with a bare HEAD file (no git-dir)")
+	}
+}
+
+func TestIsGitRepoAcceptsInitRepo(t *testing.T) {
+	dir := t.TempDir()
+	if err := exec.Command("git", "-C", dir, "init", "-q").Run(); err != nil {
+		t.Skipf("git init unavailable: %v", err)
+	}
+	if !isGitRepo(dir) {
+		t.Errorf("isGitRepo rejected a real git working tree")
 	}
 }
 
