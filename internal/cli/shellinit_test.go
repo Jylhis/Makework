@@ -8,10 +8,6 @@ import (
 	"testing"
 )
 
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
-}
-
 // writeHookFile captures `mw init <shell>` output to a file and returns its path.
 func writeHookFile(t *testing.T, shell, dir string) string {
 	t.Helper()
