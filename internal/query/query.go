@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"unicode"
 )
 
 // Entry is one parsed commit from git log.
@@ -30,11 +31,23 @@ func ParseLogLine(line, repoName, branch, wtPath string) (Entry, bool) {
 		RepoName:     repoName,
 		Branch:       branch,
 		CommitHash:   parts[0],
-		Author:       parts[1],
+		Author:       sanitizeTerminalText(parts[1]),
 		Date:         parts[2],
-		Message:      parts[3],
+		Message:      sanitizeTerminalText(parts[3]),
 		WorktreePath: wtPath,
 	}, true
+}
+
+func sanitizeTerminalText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\t' {
+			return r
+		}
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 // Dedup removes duplicate entries sharing the same (RepoName, CommitHash).
