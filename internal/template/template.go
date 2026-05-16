@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Apply copies all files from templateDir into worktreeDir recursively,
@@ -30,7 +31,10 @@ func Apply(templateDir, worktreeDir string) ([]string, error) {
 			return err
 		}
 		dest := filepath.Join(worktreeDir, rel)
-		if _, err := os.Stat(dest); err == nil {
+		if err := ensureSafeDestination(worktreeDir, dest); err != nil {
+			return err
+		}
+		if _, err := os.Lstat(dest); err == nil {
 			return nil // skip existing
 		}
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
@@ -47,4 +51,32 @@ func Apply(templateDir, worktreeDir string) ([]string, error) {
 		return nil
 	})
 	return copied, err
+}
+
+func ensureSafeDestination(root, dest string) error {
+	root = filepath.Clean(root)
+	parent := filepath.Dir(dest)
+	rel, err := filepath.Rel(root, parent)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%s: destination escapes worktree", dest)
+	}
+
+	cur := root
+	if rel == "." {
+		return nil
+	}
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		cur = filepath.Join(cur, part)
+		info, err := os.Lstat(cur)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return fmt.Errorf("%s: %w", cur, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s: destination path contains symlink", cur)
+		}
+	}
+	return nil
 }
