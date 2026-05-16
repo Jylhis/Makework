@@ -27,7 +27,7 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = cfg.settings == { };
+        assertion = common.mkConfigFile cfg == null;
         message = ''
           programs.makework.settings is per-user configuration; set it in
           the home-manager module running inside nix-on-droid instead.
