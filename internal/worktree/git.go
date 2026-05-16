@@ -50,7 +50,7 @@ func EnableSparseCheckout(wtPath string, paths []string) error {
 	if _, err := repo.RunGitCapture("-C", wtPath, "sparse-checkout", "init", "--cone"); err != nil {
 		return err
 	}
-	args := append([]string{"-C", wtPath, "sparse-checkout", "set"}, paths...)
+	args := append([]string{"-C", wtPath, "sparse-checkout", "set", "--"}, paths...)
 	_, err := repo.RunGitCapture(args...)
 	return err
 }
