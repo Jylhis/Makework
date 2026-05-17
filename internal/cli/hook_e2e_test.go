@@ -10,8 +10,6 @@ import (
 // `mw go`), the post-create hooks declared in the worktree's
 // .makework.toml run with the MW_* env overlay set.
 func TestPostCreateHookRunsOnSwitch(t *testing.T) {
-	t.Setenv("MW_ENABLE_POST_CREATE_HOOKS", "1")
-
 	home := setupIsolatedEnv(t)
 	if _, err := captureOutput(t, "init"); err != nil {
 		t.Fatalf("mw init: %v", err)
@@ -52,7 +50,7 @@ post-create = ["echo $MW_BRANCH > HOOK_RAN.txt"]
 	resolved, _ := cat.FindProjectUnambiguous("scratch")
 	wtPath := resolvedWorktreePath(cfg, resolved, "feature")
 
-	if out, err := captureOutput(t, "go", "scratch@feature"); err != nil {
+	if out, err := captureOutput(t, "go", "--allow-post-create-hooks", "scratch@feature"); err != nil {
 		t.Fatalf("mw go scratch@feature: %v\n%s", err, out)
 	}
 

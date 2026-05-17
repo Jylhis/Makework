@@ -24,6 +24,7 @@ import (
 
 func newGoCmd() *cobra.Command {
 	var list bool
+	var allowPostCreateHooks bool
 	cmd := &cobra.Command{
 		Use:   "go [project] [ref]",
 		Short: "Navigate to a project worktree (supports fuzzy matching)",
@@ -58,7 +59,7 @@ func newGoCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return navigateToWorktree(cfg, resolved, resolved.Repo.MainBranch, out)
+				return navigateToWorktree(cfg, resolved, resolved.Repo.MainBranch, out, allowPostCreateHooks)
 			}
 
 			query := args[0]
@@ -77,7 +78,7 @@ func newGoCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return navigateToWorktree(cfg, resolved, parsed.Branch, out)
+				return navigateToWorktree(cfg, resolved, parsed.Branch, out, allowPostCreateHooks)
 			}
 
 			// Fast path: exact catalog match
@@ -87,7 +88,7 @@ func newGoCmd() *cobra.Command {
 					if ref == "" {
 						ref = resolved.Repo.MainBranch
 					}
-					return navigateToWorktree(cfg, resolved, ref, out)
+					return navigateToWorktree(cfg, resolved, ref, out, allowPostCreateHooks)
 				}
 			}
 
@@ -158,10 +159,11 @@ func newGoCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&list, "list", false, "Show all matches with scores instead of navigating")
+	cmd.Flags().BoolVar(&allowPostCreateHooks, "allow-post-create-hooks", false, "Run repository-defined post-create hooks for newly created worktrees")
 	return silenceSubcommand(cmd)
 }
 
-func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, ref string, out io.Writer) error {
+func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, ref string, out io.Writer, allowPostCreateHooks bool) error {
 	resolvedRef, err := resolveBranchShortcut(ref, resolved)
 	if err != nil {
 		return err
@@ -185,7 +187,7 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 		_, _ = template.Apply(*cfg.TemplateDir, wtPath)
 	}
 
-	if newlyCreated && postCreateHooksEnabled() {
+	if newlyCreated && allowPostCreateHooks {
 		runPostCreateHooks(wtPath, resolved.Repo.Name, ref, os.Stderr)
 	}
 
@@ -267,8 +269,4 @@ func runPostCreateHooks(wtPath, repoName, branch string, out io.Writer) {
 	if err := hook.RunPostCreate(wtPath, p.Hooks.PostCreate, env, out); err != nil {
 		fmt.Fprintf(out, "post-create hook error: %v\n", err)
 	}
-}
-
-func postCreateHooksEnabled() bool {
-	return os.Getenv("MW_ENABLE_POST_CREATE_HOOKS") == "1"
 }
