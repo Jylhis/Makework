@@ -8,6 +8,7 @@
 #     makework.enable = true;
 #     makework.settings.worktree_root = "/home/user/wt";
 #   };
+makeworkSelf:
 {
   self,
   lib,
@@ -31,7 +32,7 @@ in
     in
     {
       options.makework = common.mkOptions {
-        defaultPackage = self.packages.${system}.default;
+        defaultPackage = makeworkSelf.packages.${system}.default;
       };
 
       config = lib.mkIf cfg.enable {

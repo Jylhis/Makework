@@ -91,7 +91,7 @@
         }
       );
 
-      flakeModules.default = import ./nix/flake-parts-module.nix;
+      flakeModules.default = import ./nix/flake-parts-module.nix self;
 
       nixosModules.default = import ./nix/modules/nixos.nix { inherit self; };
       darwinModules.default = import ./nix/modules/darwin.nix { inherit self; };
