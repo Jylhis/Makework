@@ -15,7 +15,6 @@
 package integration
 
 import (
-	"bytes"
 	"os/exec"
 	"strings"
 
@@ -65,7 +64,7 @@ func Check(repoPath, branch, defaultBranch string) (State, error) {
 		return StateNoChanges, nil
 	}
 
-	merged, err := patchIDsMerged(repoPath, branch, defaultBranch)
+	merged, err := exactPatchesMerged(repoPath, branch, defaultBranch)
 	if err != nil {
 		return StateUnknown, err
 	}
@@ -90,63 +89,51 @@ func diffEmpty(repoPath, a, b string) (bool, error) {
 	return false, err
 }
 
-// patchIDsMerged reports whether every commit unique to branch has a
-// matching patch-id on defaultBranch.
-func patchIDsMerged(repoPath, branch, defaultBranch string) (bool, error) {
-	branchIDs, err := patchIDs(repoPath, defaultBranch+".."+branch)
+// exactPatchesMerged reports whether every commit unique to branch has
+// an exact patch-text match on defaultBranch.
+func exactPatchesMerged(repoPath, branch, defaultBranch string) (bool, error) {
+	branchPatches, err := patchSignatures(repoPath, defaultBranch+".."+branch)
 	if err != nil {
 		return false, err
 	}
-	if len(branchIDs) == 0 {
+	if len(branchPatches) == 0 {
 		return false, nil
 	}
-	defaultIDs, err := patchIDs(repoPath, branch+".."+defaultBranch)
+	defaultPatches, err := patchSignatures(repoPath, branch+".."+defaultBranch)
 	if err != nil {
 		return false, err
 	}
-	have := make(map[string]struct{}, len(defaultIDs))
-	for _, id := range defaultIDs {
-		have[id] = struct{}{}
+	have := make(map[string]struct{}, len(defaultPatches))
+	for _, sig := range defaultPatches {
+		have[sig] = struct{}{}
 	}
-	for _, id := range branchIDs {
-		if _, ok := have[id]; !ok {
+	for _, sig := range branchPatches {
+		if _, ok := have[sig]; !ok {
 			return false, nil
 		}
 	}
 	return true, nil
 }
 
-// patchIDs returns the patch-id of every commit in revRange, in log
-// order. Each git patch-id output line is "<patch-id> <commit-sha>".
-func patchIDs(repoPath, revRange string) ([]string, error) {
-	logCmd := exec.Command("git", "-C", repoPath, "log", "--reverse", "-p", revRange)
-	pidCmd := exec.Command("git", "-C", repoPath, "patch-id")
-
-	pipe, err := logCmd.StdoutPipe()
+// patchSignatures returns whitespace-sensitive patch texts for commits in
+// revRange, in log order.
+func patchSignatures(repoPath, revRange string) ([]string, error) {
+	commitList, err := repo.RunGitCapture("-C", repoPath, "rev-list", "--reverse", revRange)
 	if err != nil {
 		return nil, err
 	}
-	pidCmd.Stdin = pipe
-	var out bytes.Buffer
-	pidCmd.Stdout = &out
-
-	if err := pidCmd.Start(); err != nil {
-		return nil, err
-	}
-	if err := logCmd.Run(); err != nil {
-		_ = pidCmd.Wait()
-		return nil, err
-	}
-	if err := pidCmd.Wait(); err != nil {
-		return nil, err
+	commits := strings.Fields(commitList)
+	if len(commits) == 0 {
+		return nil, nil
 	}
 
-	var ids []string
-	for _, line := range strings.Split(out.String(), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) > 0 {
-			ids = append(ids, fields[0])
+	sigs := make([]string, 0, len(commits))
+	for _, sha := range commits {
+		patch, err := repo.RunGitCapture("-C", repoPath, "show", "--pretty=format:", "--no-ext-diff", sha)
+		if err != nil {
+			return nil, err
 		}
+		sigs = append(sigs, patch)
 	}
-	return ids, nil
+	return sigs, nil
 }

@@ -157,3 +157,26 @@ func TestCheckUnknownBranch(t *testing.T) {
 		t.Error("expected error for missing branch")
 	}
 }
+
+// TestStateMergedPIDWhitespaceSensitive: whitespace-different patches
+// should not be treated as merged.
+func TestStateMergedPIDWhitespaceSensitive(t *testing.T) {
+	dir := fixture(t)
+	git(t, dir, "checkout", "-b", "feature")
+	write(t, filepath.Join(dir, "Makefile"), "all:\n\t@echo feature\n")
+	git(t, dir, "add", "Makefile")
+	git(t, dir, "commit", "-m", "feature makefile")
+
+	git(t, dir, "checkout", "main")
+	write(t, filepath.Join(dir, "Makefile"), "all:\n        @echo feature\n")
+	git(t, dir, "add", "Makefile")
+	git(t, dir, "commit", "-m", "main whitespace variant")
+
+	state, err := Check(dir, "feature", "main")
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if state != StateDiverged {
+		t.Errorf("got %s; want %s", state, StateDiverged)
+	}
+}
