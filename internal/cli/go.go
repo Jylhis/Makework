@@ -229,7 +229,7 @@ func resolveBranchShortcut(ref string, resolved *catalog.ResolvedProject) (strin
 	slug := ""
 	if resolved.Repo.URL != nil {
 		if p, ok := repo.ParseRemoteURL(*resolved.Repo.URL); ok {
-			slug = strings.Join(p.Segments, "/")
+			slug = p.Host + "/" + strings.Join(p.Segments, "/")
 		}
 	}
 	branch, ok, err := refshortcut.Resolve(ref, resolved.Repo.Path, slug)
