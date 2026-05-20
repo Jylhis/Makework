@@ -33,7 +33,23 @@ func CreateBranch(barePath, newBranch, wtPath, startPoint string) error {
 
 // Remove runs `git -C <barePath> worktree remove <wtPath>` then prune.
 func Remove(barePath, wtPath string) error {
-	if _, err := repo.RunGitCapture("-C", barePath, "worktree", "remove", wtPath); err != nil {
+	return remove(barePath, wtPath, false)
+}
+
+// RemoveForce removes a worktree even when it contains untracked or
+// modified files. Useful when callers have already gated the
+// destructive call behind their own `--force` flag.
+func RemoveForce(barePath, wtPath string) error {
+	return remove(barePath, wtPath, true)
+}
+
+func remove(barePath, wtPath string, force bool) error {
+	args := []string{"-C", barePath, "worktree", "remove"}
+	if force {
+		args = append(args, "--force")
+	}
+	args = append(args, wtPath)
+	if _, err := repo.RunGitCapture(args...); err != nil {
 		return err
 	}
 	_, err := repo.RunGitCapture("-C", barePath, "worktree", "prune")

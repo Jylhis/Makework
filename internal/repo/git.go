@@ -82,6 +82,30 @@ func ListBranches(barePath string) ([]string, error) {
 	return result, nil
 }
 
+// ListRemoteBranches returns all remote-tracking branch short names
+// (e.g. "origin/feature"), sorted alphabetically. HEAD symrefs like
+// "origin/HEAD" are skipped.
+func ListRemoteBranches(barePath string) ([]string, error) {
+	out, err := RunGitCapture("-C", barePath, "for-each-ref",
+		"--format=%(refname:short)", "refs/remotes/")
+	if err != nil {
+		return nil, err
+	}
+	var result []string
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasSuffix(trimmed, "/HEAD") {
+			continue
+		}
+		result = append(result, trimmed)
+	}
+	slices.Sort(result)
+	return result, nil
+}
+
 // CheckDefaultBranchChanged returns the new branch name if the default
 // branch has changed from known, or "" if unchanged.
 func CheckDefaultBranchChanged(barePath, known string) (string, error) {

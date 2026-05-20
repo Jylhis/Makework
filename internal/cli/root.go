@@ -41,6 +41,7 @@ func newRoot() *cobra.Command {
 		newAiCmd(),
 		newInitCmd(),
 		newVisitCmd(),
+		newWtCmd(),
 		newManCmd(),
 		newGenerateTexiCmd(),
 	)
