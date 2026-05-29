@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -29,6 +30,7 @@ type Catalog struct {
 type SyncOptions struct {
 	MaxDepth uint32
 	Exclude  []string
+	Progress io.Writer
 }
 
 // InitResult describes what `Init` created or found.

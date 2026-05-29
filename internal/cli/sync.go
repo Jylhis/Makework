@@ -65,6 +65,7 @@ func newSyncCmd() *cobra.Command {
 			added, err := cat.Sync(cfg, scanRoots, catalog.SyncOptions{
 				MaxDepth: maxDepth,
 				Exclude:  mergedExclude,
+				Progress: cmd.ErrOrStderr(),
 			})
 			if err != nil {
 				return err
