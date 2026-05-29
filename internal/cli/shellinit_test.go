@@ -22,6 +22,19 @@ func writeHookFile(t *testing.T, shell, dir string) string {
 	return path
 }
 
+func writeCompletionsFile(t *testing.T, shell, dir string) string {
+	t.Helper()
+	out, err := captureOutput(t, "completions", shell)
+	if err != nil {
+		t.Fatalf("mw completions %s: %v (out: %s)", shell, err, out)
+	}
+	path := filepath.Join(dir, "mw-completions."+shell)
+	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+		t.Fatalf("write completions file: %v", err)
+	}
+	return path
+}
+
 func TestInitZshHookIsIdempotent(t *testing.T) {
 	if _, err := exec.LookPath("zsh"); err != nil {
 		t.Skip("zsh not available")
@@ -104,4 +117,87 @@ func TestInitZshHookActuallyFiresOnChpwd(t *testing.T) {
 	if !strings.Contains(string(data), "visit "+target) {
 		t.Errorf("expected 'visit %s' in stub log, got %q", target, data)
 	}
+}
+
+func TestCompletionsCommandIncludesGoWrapper(t *testing.T) {
+	out, err := captureOutput(t, "completions", "zsh")
+	if err != nil {
+		t.Fatalf("mw completions zsh: %v (out: %s)", err, out)
+	}
+	for _, want := range []string{
+		"# makework navigation wrapper",
+		"mw()",
+		`_mw_out="$(command mw "$@")"`,
+		`builtin cd -- "$_mw_path"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected %q in completions output", want)
+		}
+	}
+}
+
+func TestZshGoWrapperChangesDirectory(t *testing.T) {
+	if _, err := exec.LookPath("zsh"); err != nil {
+		t.Skip("zsh not available")
+	}
+	dir := t.TempDir()
+	integration := writeCompletionsFile(t, "zsh", dir)
+	stubDir := writeGoStub(t, dir)
+	target := t.TempDir()
+
+	script := "export PATH=" + shellQuote(stubDir) + ":$PATH\n" +
+		"source " + shellQuote(integration) + "\n" +
+		"mw go " + shellQuote(target) + "\n" +
+		"print -r -- \"$PWD\"\n"
+	cmd := exec.Command("zsh", "-f", "-c", script)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("zsh: %v", err)
+	}
+	if got := strings.TrimSpace(string(out)); got != target {
+		t.Fatalf("expected cwd %q, got %q", target, got)
+	}
+}
+
+func TestBashGoWrapperChangesDirectory(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash not available")
+	}
+	dir := t.TempDir()
+	integration := writeCompletionsFile(t, "bash", dir)
+	stubDir := writeGoStub(t, dir)
+	target := t.TempDir()
+
+	script := "export PATH=" + shellQuote(stubDir) + ":$PATH\n" +
+		"source " + shellQuote(integration) + "\n" +
+		"mw go " + shellQuote(target) + "\n" +
+		"printf '%s\\n' \"$PWD\"\n"
+	cmd := exec.Command("bash", "--noprofile", "--norc", "-c", script)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("bash: %v", err)
+	}
+	if got := strings.TrimSpace(string(out)); got != target {
+		t.Fatalf("expected cwd %q, got %q", target, got)
+	}
+}
+
+func writeGoStub(t *testing.T, dir string) string {
+	t.Helper()
+	stubDir := filepath.Join(dir, "stub")
+	if err := os.MkdirAll(stubDir, 0o755); err != nil {
+		t.Fatalf("mkdir stub: %v", err)
+	}
+	stub := `#!/bin/sh
+if [ "$1" = "go" ]; then
+  printf '%s\n' "$2"
+  exit 0
+fi
+printf 'mw stub: %s\n' "$*"
+`
+	stubPath := filepath.Join(stubDir, "mw")
+	if err := os.WriteFile(stubPath, []byte(stub), 0o755); err != nil {
+		t.Fatalf("write stub: %v", err)
+	}
+	return stubDir
 }

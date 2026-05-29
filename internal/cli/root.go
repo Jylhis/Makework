@@ -40,6 +40,7 @@ func newRoot() *cobra.Command {
 		newResolverCmd(),
 		newAiCmd(),
 		newInitCmd(),
+		newCompletionsCmd(),
 		newVisitCmd(),
 		newWtCmd(),
 		newManCmd(),
