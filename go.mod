@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/agnivade/levenshtein v1.2.1
 	github.com/pelletier/go-toml/v2 v2.3.1
-	github.com/rogpeppe/go-internal v1.14.1
+	github.com/rogpeppe/go-internal v1.15.0
 	github.com/spf13/cobra v1.10.2
 )
 
