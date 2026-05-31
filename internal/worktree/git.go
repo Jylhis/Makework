@@ -110,7 +110,7 @@ func parsePorcelain(text string) []Info {
 	var worktrees []Info
 	var current *Info
 
-	for _, line := range strings.Split(text, "\n") {
+	for line := range strings.SplitSeq(text, "\n") {
 		if path, ok := strings.CutPrefix(line, "worktree "); ok {
 			if current != nil {
 				worktrees = append(worktrees, *current)
