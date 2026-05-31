@@ -27,8 +27,8 @@ type WorktreeStatus struct {
 	Behind      uint32            `json:"behind"`
 	MainAhead   uint32            `json:"main_ahead"`
 	MainBehind  uint32            `json:"main_behind"`
-	Integration integration.State `json:"integration,omitempty"`
-	LastCommit  int64             `json:"last_commit_ts,omitempty"`
+	Integration integration.State `json:"integration,omitzero"`
+	LastCommit  int64             `json:"last_commit_ts,omitzero"`
 	IsOrphaned  bool              `json:"is_orphaned"`
 }
 
