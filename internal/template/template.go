@@ -65,7 +65,7 @@ func ensureSafeDestination(root, dest string) error {
 	if rel == "." {
 		return nil
 	}
-	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
 		cur = filepath.Join(cur, part)
 		info, err := os.Lstat(cur)
 		if err != nil {

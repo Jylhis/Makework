@@ -42,7 +42,7 @@ func Worktree(wtPath, pattern, repoName string, opts Options) []Result {
 
 	prefix := wtPath + "/"
 	var results []Result
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if line == "" {
 			continue
 		}

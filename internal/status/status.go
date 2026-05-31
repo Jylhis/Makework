@@ -93,7 +93,7 @@ func porcelainCounts(s string) (dirty uint32, modified, untracked, conflicts boo
 	if s == "" {
 		return 0, false, false, false
 	}
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if len(line) < 2 {
 			continue
 		}

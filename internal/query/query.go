@@ -93,7 +93,7 @@ func LogWorktree(wtPath, branch, repoName, since string, until, author *string) 
 		return nil
 	}
 	var entries []Entry
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if line == "" {
 			continue
 		}
