@@ -103,7 +103,7 @@ func parseSCP(rest string) (ParsedURL, bool) {
 
 func splitPathSegments(path string) []string {
 	var out []string
-	for _, s := range strings.Split(path, "/") {
+	for s := range strings.SplitSeq(path, "/") {
 		if s == "" {
 			continue
 		}

@@ -73,7 +73,7 @@ func ListBranches(barePath string) ([]string, error) {
 		return nil, err
 	}
 	var result []string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if trimmed := strings.TrimSpace(line); trimmed != "" {
 			result = append(result, trimmed)
 		}
@@ -92,7 +92,7 @@ func ListRemoteBranches(barePath string) ([]string, error) {
 		return nil, err
 	}
 	var result []string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
