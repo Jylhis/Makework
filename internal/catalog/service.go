@@ -13,6 +13,7 @@ import (
 	"github.com/jylhis/makework/internal/maintenance"
 	"github.com/jylhis/makework/internal/project"
 	"github.com/jylhis/makework/internal/repo"
+	"github.com/jylhis/makework/internal/terminal"
 	"github.com/jylhis/makework/internal/worktree"
 )
 
@@ -36,7 +37,7 @@ func (c *Catalog) Sync(cfg *config.Config, scanRoots []string, opts SyncOptions)
 			progress.registering(rp)
 			name, isNew, err := c.Add(rp, cfg)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: skipping %s: %v\n", rp, err)
+				fmt.Fprintf(os.Stderr, "Warning: skipping %s: %s\n", terminal.SanitizeText(rp), terminal.SanitizeText(err.Error()))
 				continue
 			}
 			if isNew {
@@ -142,7 +143,7 @@ func (c *Catalog) register(req addRequest, cfg *config.Config) (string, bool, er
 			if req.localFB == "" {
 				return "", false, err
 			}
-			fmt.Fprintf(os.Stderr, "Warning: remote unreachable for %s: %v. Falling back to local clone.\n", req.warnOnLocal, err)
+			fmt.Fprintf(os.Stderr, "Warning: remote unreachable for %s: %s. Falling back to local clone.\n", terminal.SanitizeText(req.warnOnLocal), terminal.SanitizeText(err.Error()))
 			_ = os.RemoveAll(bareDest)
 			if err := repo.CloneBare(req.localFB, bareDest); err != nil {
 				return "", false, err
@@ -243,7 +244,7 @@ func (p *syncProgress) root(root string) {
 	if p.out == nil {
 		return
 	}
-	fmt.Fprintf(p.out, "Walking %s\n", root)
+	fmt.Fprintf(p.out, "Walking %s\n", terminal.SanitizeText(root))
 }
 
 func (p *syncProgress) dir(path string) {
@@ -252,7 +253,7 @@ func (p *syncProgress) dir(path string) {
 	}
 	p.dirsScanned++
 	if p.dirsScanned%100 == 0 {
-		fmt.Fprintf(p.out, "  scanned %d directories; now at %s\n", p.dirsScanned, path)
+		fmt.Fprintf(p.out, "  scanned %d directories; now at %s\n", p.dirsScanned, terminal.SanitizeText(path))
 	}
 }
 
@@ -260,21 +261,21 @@ func (p *syncProgress) found(path string) {
 	if p.out == nil {
 		return
 	}
-	fmt.Fprintf(p.out, "  found repo: %s\n", path)
+	fmt.Fprintf(p.out, "  found repo: %s\n", terminal.SanitizeText(path))
 }
 
 func (p *syncProgress) discovered(root string, count int) {
 	if p.out == nil {
 		return
 	}
-	fmt.Fprintf(p.out, "Discovered %d repo(s) under %s\n", count, root)
+	fmt.Fprintf(p.out, "Discovered %d repo(s) under %s\n", count, terminal.SanitizeText(root))
 }
 
 func (p *syncProgress) registering(path string) {
 	if p.out == nil {
 		return
 	}
-	fmt.Fprintf(p.out, "Registering %s\n", path)
+	fmt.Fprintf(p.out, "Registering %s\n", terminal.SanitizeText(path))
 }
 
 func walkForRepos(dir string, depth uint32, opts SyncOptions, progress *syncProgress) ([]string, error) {
