@@ -196,6 +196,39 @@ func TestCatalogSaveConcurrent(t *testing.T) {
 	}
 }
 
+func TestCatalogSavePreservesExistingMode(t *testing.T) {
+	isolatedXDG(t)
+
+	catPath, err := CatalogPath()
+	if err != nil {
+		t.Fatalf("CatalogPath: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(catPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(catPath, []byte("repos = {}\n"), 0o600); err != nil {
+		t.Fatalf("seed catalog: %v", err)
+	}
+	if err := os.Chmod(catPath, 0o600); err != nil {
+		t.Fatalf("chmod catalog: %v", err)
+	}
+
+	cat := &Catalog{Repos: map[string]*repo.Repository{
+		"repo": newRepo("repo", "/tmp/repo"),
+	}}
+	if err := cat.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	st, err := os.Stat(catPath)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if got := st.Mode().Perm(); got != 0o600 {
+		t.Fatalf("catalog mode = %o, want %o", got, 0o600)
+	}
+}
+
 func TestIsGitRepoRejectsSpoofedHEAD(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
