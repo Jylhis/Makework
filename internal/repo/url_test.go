@@ -49,6 +49,11 @@ func TestParseRemoteURLRejects(t *testing.T) {
 		`git@github.com:org\..\evil.git`,
 		// Colon in path segment (NTFS alternate data streams).
 		"https://github.com/org/evil:stream/repo.git",
+		// Control characters must not enter worktree paths or line-oriented
+		// shell integration output.
+		"http://127.0.0.1/org/\ntouch /tmp/pwn #/repo.git",
+		"https://github.com/org/repo\r.git",
+		"git@github.com:org/repo\tname.git",
 	} {
 		if _, ok := ParseRemoteURL(bad); ok {
 			t.Errorf("expected %q to fail", bad)

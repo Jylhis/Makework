@@ -195,6 +195,9 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 	}
 	ref = resolvedRef
 	wtPath := resolvedWorktreePath(cfg, resolved, ref)
+	if err := ensureSingleLineShellField("worktree path", wtPath); err != nil {
+		return err
+	}
 
 	newlyCreated := false
 	if !fsx.PathExists(wtPath) {
@@ -220,8 +223,16 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 	if resolved.SubprojectPath != "" {
 		finalPath = wtPath + "/" + resolved.SubprojectPath
 	}
+	if err := ensureSingleLineShellField("navigation path", finalPath); err != nil {
+		return err
+	}
 
 	nixResult := nix.Detect(wtPath, resolved.NixConfig)
+	if nixResult != nil {
+		if err := ensureSingleLineShellField("activation command", nixResult.ActivationCommand); err != nil {
+			return err
+		}
+	}
 
 	fmt.Fprintln(out, finalPath)
 	if nixResult != nil {
@@ -232,6 +243,13 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 	}
 
 	recordVisit(resolved.Repo.Name, ref)
+	return nil
+}
+
+func ensureSingleLineShellField(name, value string) error {
+	if strings.ContainsAny(value, "\r\n") {
+		return fmt.Errorf("%s contains a line break and cannot be emitted to shell integration", name)
+	}
 	return nil
 }
 
