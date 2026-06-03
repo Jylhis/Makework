@@ -38,6 +38,29 @@ func Get(wtPath string) WorktreeStatus {
 	return GetFull(wtPath, "", "")
 }
 
+// GetLite computes a lightweight status for listing commands. It avoids
+// expensive dirty/integration scans and only resolves branch + remote
+// ahead/behind information.
+func GetLite(wtPath string) WorktreeStatus {
+	isOrphaned := false
+	if _, err := os.Stat(wtPath); os.IsNotExist(err) {
+		isOrphaned = true
+	}
+	branch := gitOutput(wtPath, "rev-parse", "--abbrev-ref", "HEAD")
+	if branch == "" {
+		branch = "unknown"
+	}
+	ahead, behind := aheadBehind(wtPath)
+
+	return WorktreeStatus{
+		Path:       wtPath,
+		Branch:     branch,
+		Ahead:      ahead,
+		Behind:     behind,
+		IsOrphaned: isOrphaned,
+	}
+}
+
 // GetFull computes the full status of a single worktree. barePath and
 // defaultBranch enable integration classification and main-relative
 // counts; pass empty strings to skip those.

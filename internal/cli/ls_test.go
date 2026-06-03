@@ -59,8 +59,8 @@ func TestLsJSON(t *testing.T) {
 	if got.Status.Branch != "feature" {
 		t.Errorf("Branch = %q; want feature", got.Status.Branch)
 	}
-	if got.Status.MainAhead == 0 {
-		t.Errorf("MainAhead = 0; want > 0 (feature is ahead of main)")
+	if got.Status.MainAhead != 0 || got.Status.MainBehind != 0 {
+		t.Errorf("Main ahead/behind should be omitted in lightweight ls status; got %d/%d", got.Status.MainAhead, got.Status.MainBehind)
 	}
 }
 

@@ -41,7 +41,7 @@ func newLsCmd() *cobra.Command {
 					if wt.IsBare {
 						continue
 					}
-					st := status.GetFull(wt.Path, r.Path, r.MainBranch)
+					st := status.GetLite(wt.Path)
 					all = append(all, lsEntry{Repo: name, Status: st})
 				}
 			}
