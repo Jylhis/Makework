@@ -9,12 +9,15 @@
 //     forward merge or rebase).
 //  3. StateNoChanges  — three-dot diff (default...branch) is empty;
 //     branch has commits but no net tree change since the merge-base.
-//  4. StateMergedPID  — every commit unique to branch has a matching
-//     git patch-id on default (squash- / cherry-pick-merge case).
+//  4. StateMergedPID  — every commit unique to branch has an exact
+//     patch-text match on default (squash- / cherry-pick-merge case).
 //  5. StateDiverged   — none of the above; keeping the branch.
 package integration
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"io"
 	"os/exec"
 	"strings"
 
@@ -103,7 +106,7 @@ func exactPatchesMerged(repoPath, branch, defaultBranch string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	have := make(map[string]struct{}, len(defaultPatches))
+	have := make(map[patchSignature]struct{}, len(defaultPatches))
 	for _, sig := range defaultPatches {
 		have[sig] = struct{}{}
 	}
@@ -115,9 +118,14 @@ func exactPatchesMerged(repoPath, branch, defaultBranch string) (bool, error) {
 	return true, nil
 }
 
-// patchSignatures returns whitespace-sensitive patch texts for commits in
+// patchSignature is a fixed-size digest of a commit patch. The digest keeps
+// exact patch matching whitespace-sensitive without retaining attacker-controlled
+// patch bodies in memory.
+type patchSignature [sha256.Size]byte
+
+// patchSignatures returns whitespace-sensitive patch digests for commits in
 // revRange, in log order.
-func patchSignatures(repoPath, revRange string) ([]string, error) {
+func patchSignatures(repoPath, revRange string) ([]patchSignature, error) {
 	commitList, err := repo.RunGitCapture("-C", repoPath, "rev-list", "--reverse", revRange)
 	if err != nil {
 		return nil, err
@@ -127,13 +135,45 @@ func patchSignatures(repoPath, revRange string) ([]string, error) {
 		return nil, nil
 	}
 
-	sigs := make([]string, 0, len(commits))
+	sigs := make([]patchSignature, 0, len(commits))
 	for _, sha := range commits {
-		patch, err := repo.RunGitCapture("-C", repoPath, "show", "--pretty=format:", "--no-ext-diff", sha)
+		sig, err := patchDigest(repoPath, sha)
 		if err != nil {
 			return nil, err
 		}
-		sigs = append(sigs, patch)
+		sigs = append(sigs, sig)
 	}
 	return sigs, nil
+}
+
+func patchDigest(repoPath, sha string) (patchSignature, error) {
+	cmdArgs := []string{"-C", repoPath, "show", "--pretty=format:", "--no-ext-diff", sha}
+	cmd := exec.Command("git", cmdArgs...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return patchSignature{}, err
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		return patchSignature{}, err
+	}
+
+	h := sha256.New()
+	_, copyErr := io.Copy(h, stdout)
+	waitErr := cmd.Wait()
+	if copyErr != nil {
+		return patchSignature{}, copyErr
+	}
+	if waitErr != nil {
+		return patchSignature{}, &repo.GitError{
+			Cmd:    "git " + strings.Join(cmdArgs, " "),
+			Stderr: strings.TrimSpace(stderr.String()),
+		}
+	}
+
+	var sig patchSignature
+	copy(sig[:], h.Sum(nil))
+	return sig, nil
 }
