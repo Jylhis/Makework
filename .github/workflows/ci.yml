@@ -3,11 +3,27 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      full-matrix:
+        description: Run the full cross-platform matrix.
+        required: false
+        default: "false"
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Cost audit: no cron schedule here. Daily or higher-frequency automation is not
+# justified for this workflow, so the expensive full matrix stays on manual
+# offload only via workflow_dispatch.
 
 permissions:
   contents: read
@@ -21,6 +37,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: true
       - uses: golangci/golangci-lint-action@v9
         with:
           args: --output.checkstyle.path=golangci-report.xml
@@ -40,6 +57,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: true
       - run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
       - uses: actions/upload-artifact@v7
         with:
@@ -57,6 +75,7 @@ jobs:
 
   nix-build-linux:
     name: nix build (x86_64-linux)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -69,7 +88,7 @@ jobs:
 
   nix-build-cross:
     name: nix build (${{ matrix.system }})
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' && inputs.full-matrix == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -92,6 +111,7 @@ jobs:
 
   devenv-test-linux:
     name: devenv test (ubuntu-latest)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -107,7 +127,7 @@ jobs:
 
   devenv-test-macos:
     name: devenv test (macos-latest)
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' && inputs.full-matrix == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
@@ -124,7 +144,7 @@ jobs:
   sonarqube:
     name: SonarQube
     needs: [go-lint, go-test]
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

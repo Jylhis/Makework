@@ -3,6 +3,13 @@ name: Pages
 on:
   push:
     branches: [main]
+    paths:
+      - 'docs/**'
+      - 'nix/docs/**'
+      - 'docs/docs.json'
+      - '.github/workflows/pages.yml'
+      - 'flake.nix'
+      - 'flake.lock'
   workflow_dispatch:
 
 permissions:
