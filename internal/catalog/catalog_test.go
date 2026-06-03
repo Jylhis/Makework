@@ -1,10 +1,12 @@
 package catalog
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -226,6 +228,31 @@ func TestCatalogSavePreservesExistingMode(t *testing.T) {
 	}
 	if got := st.Mode().Perm(); got != 0o600 {
 		t.Fatalf("catalog mode = %o, want %o", got, 0o600)
+	}
+}
+
+func TestSyncProgressSanitizesTerminalControlCharacters(t *testing.T) {
+	var out bytes.Buffer
+	progress := &syncProgress{out: &out, dirsScanned: 99}
+	unsafePath := "/tmp/repo_\x1b]52;c;U0VDUkVUX0NMSVA=\a_ansi\nnext"
+
+	progress.root(unsafePath)
+	progress.dir(unsafePath)
+	progress.found(unsafePath)
+	progress.discovered(unsafePath, 1)
+	progress.registering(unsafePath)
+
+	got := out.String()
+	for _, control := range []string{"\x1b", "\a", "\nnext"} {
+		if strings.Contains(got, control) {
+			t.Fatalf("progress output contains raw terminal control sequence %q: %q", control, got)
+		}
+	}
+	if strings.Count(got, "\n") != 5 {
+		t.Fatalf("expected only line-ending newlines in progress output, got %q", got)
+	}
+	if !strings.Contains(got, "repo_�]52;c;U0VDUkVUX0NMSVA=�_ansi�next") {
+		t.Fatalf("expected unsafe path controls to be visibly replaced, got %q", got)
 	}
 }
 
