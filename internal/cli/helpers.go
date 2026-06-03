@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/config"
@@ -149,6 +150,11 @@ func currentRepo(cat *catalog.Catalog) (*catalog.ResolvedProject, string, error)
 	if err != nil {
 		return nil, "", fmt.Errorf("getting working directory: %w", err)
 	}
+	topLevel, err := repo.RunGitCapture("-C", cwd, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return nil, "", fmt.Errorf("not inside a git worktree: %w", err)
+	}
+	topLevelClean := canonicalPath(topLevel)
 	common, err := repo.RunGitCapture("-C", cwd, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return nil, "", fmt.Errorf("not inside a git worktree: %w", err)
@@ -162,6 +168,9 @@ func currentRepo(cat *catalog.Catalog) (*catalog.ResolvedProject, string, error)
 	for name, r := range cat.Repos {
 		barePath := canonicalPath(r.Path)
 		if barePath == commonClean || barePath == filepath.Clean(commonAbs) {
+			if !isRegisteredWorktree(r.Path, topLevelClean) {
+				return nil, "", fmt.Errorf("current directory is not a registered worktree for catalog repo %q", r.Name)
+			}
 			resolved := &catalog.ResolvedProject{Repo: r}
 			branch, _ := repo.RunGitCapture("-C", cwd, "symbolic-ref", "--short", "HEAD")
 			return resolved, branch, nil
@@ -169,6 +178,9 @@ func currentRepo(cat *catalog.Catalog) (*catalog.ResolvedProject, string, error)
 		// Some catalogs record the repo path; the git common-dir may
 		// point at the same directory's `.git` for a non-bare repo.
 		if barePath == filepath.Dir(commonClean) {
+			if !isRegisteredWorktree(r.Path, topLevelClean) {
+				return nil, "", fmt.Errorf("current directory is not a registered worktree for catalog repo %q", r.Name)
+			}
 			resolved := &catalog.ResolvedProject{Repo: r}
 			branch, _ := repo.RunGitCapture("-C", cwd, "symbolic-ref", "--short", "HEAD")
 			return resolved, branch, nil
@@ -176,6 +188,23 @@ func currentRepo(cat *catalog.Catalog) (*catalog.ResolvedProject, string, error)
 		_ = name
 	}
 	return nil, "", catalog.ErrRepoNotFound{Name: commonClean}
+}
+
+func isRegisteredWorktree(repoPath, topLevel string) bool {
+	out, err := repo.RunGitCapture("-C", repoPath, "worktree", "list", "--porcelain")
+	if err != nil {
+		return false
+	}
+	for line := range strings.SplitSeq(out, "\n") {
+		if !strings.HasPrefix(line, "worktree ") {
+			continue
+		}
+		wt := strings.TrimSpace(strings.TrimPrefix(line, "worktree "))
+		if canonicalPath(wt) == topLevel {
+			return true
+		}
+	}
+	return false
 }
 
 func canonicalPath(p string) string {

@@ -181,3 +181,41 @@ func TestWtRemoveRefusesUntrackedWithoutForce(t *testing.T) {
 		t.Error("worktree should be gone after --force remove")
 	}
 }
+
+func TestWtRemoveRejectsForgedGitDir(t *testing.T) {
+	home, _, _ := wtFixture(t)
+	if _, err := captureOutput(t, "wt", "switch", "-c", "feature"); err != nil {
+		t.Fatalf("wt switch -c feature: %v", err)
+	}
+
+	cfg, cat, err := loadState()
+	if err != nil {
+		t.Fatalf("loadState: %v", err)
+	}
+	resolved, err := cat.FindProjectUnambiguous("scratch")
+	if err != nil {
+		t.Fatalf("FindProjectUnambiguous: %v", err)
+	}
+	wtPath := resolvedWorktreePath(cfg, resolved, "feature")
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Fatalf("expected feature worktree to exist: %v", err)
+	}
+
+	fake := filepath.Join(home, "forged")
+	mustMkdir(t, fake)
+	if err := os.WriteFile(filepath.Join(fake, ".git"), []byte("gitdir: "+resolved.Repo.Path+"\n"), 0o644); err != nil {
+		t.Fatalf("write forged .git: %v", err)
+	}
+	chdir(t, fake)
+
+	out, err := captureOutput(t, "wt", "remove", "feature")
+	if err == nil {
+		t.Fatalf("wt remove from forged directory should fail, got output: %s", out)
+	}
+	if !strings.Contains(out, "not a registered worktree") && !strings.Contains(err.Error(), "not a registered worktree") && !strings.Contains(err.Error(), "not inside a git worktree") {
+		t.Fatalf("expected worktree validation failure, got output=%q err=%v", out, err)
+	}
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Fatalf("feature worktree should not be removed: %v", err)
+	}
+}
