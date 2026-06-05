@@ -32,10 +32,43 @@ type WorktreeStatus struct {
 	IsOrphaned  bool              `json:"is_orphaned"`
 }
 
+// LiteWorktreeStatus holds the inexpensive status fields used by catalog-wide
+// listing commands.
+type LiteWorktreeStatus struct {
+	Path       string `json:"path"`
+	Branch     string `json:"branch"`
+	Ahead      uint32 `json:"ahead"`
+	Behind     uint32 `json:"behind"`
+	IsOrphaned bool   `json:"is_orphaned"`
+}
+
 // Get computes the basic status of a single worktree (no integration
 // state or main-relative counts).
 func Get(wtPath string) WorktreeStatus {
 	return GetFull(wtPath, "", "")
+}
+
+// GetLite computes a lightweight status for listing commands. It avoids
+// expensive dirty/integration scans and only resolves branch + remote
+// ahead/behind information.
+func GetLite(wtPath string) LiteWorktreeStatus {
+	isOrphaned := false
+	if _, err := os.Stat(wtPath); os.IsNotExist(err) {
+		isOrphaned = true
+	}
+	branch := gitOutput(wtPath, "rev-parse", "--abbrev-ref", "HEAD")
+	if branch == "" {
+		branch = "unknown"
+	}
+	ahead, behind := aheadBehind(wtPath)
+
+	return LiteWorktreeStatus{
+		Path:       wtPath,
+		Branch:     branch,
+		Ahead:      ahead,
+		Behind:     behind,
+		IsOrphaned: isOrphaned,
+	}
 }
 
 // GetFull computes the full status of a single worktree. barePath and

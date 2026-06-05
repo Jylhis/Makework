@@ -45,7 +45,7 @@ func TestLsJSON(t *testing.T) {
 		t.Fatalf("mw ls --format=json: %v\n%s", err, out)
 	}
 
-	var entries []lsEntry
+	var entries []liteLsEntry
 	if err := json.Unmarshal([]byte(out), &entries); err != nil {
 		t.Fatalf("invalid JSON: %v\noutput: %s", err, out)
 	}
@@ -59,8 +59,10 @@ func TestLsJSON(t *testing.T) {
 	if got.Status.Branch != "feature" {
 		t.Errorf("Branch = %q; want feature", got.Status.Branch)
 	}
-	if got.Status.MainAhead == 0 {
-		t.Errorf("MainAhead = 0; want > 0 (feature is ahead of main)")
+	for _, field := range []string{"dirty_count", "main_ahead", "main_behind", "integration", "last_commit_ts"} {
+		if strings.Contains(out, field) {
+			t.Errorf("lightweight JSON should not include %q:\n%s", field, out)
+		}
 	}
 }
 
@@ -72,9 +74,15 @@ func TestLsTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mw ls: %v\n%s", err, out)
 	}
-	for _, col := range []string{"REPO", "BRANCH", "STATUS", "MAIN", "REMOTE", "PATH"} {
-		if !strings.Contains(out, col) {
+	header := strings.SplitN(out, "\n", 2)[0]
+	for _, col := range []string{"REPO", "BRANCH", "REMOTE", "PATH"} {
+		if !strings.Contains(header, col) {
 			t.Errorf("missing column %q in output:\n%s", col, out)
+		}
+	}
+	for _, col := range []string{"STATUS", "MAIN"} {
+		if strings.Contains(header, col) {
+			t.Errorf("lightweight table should not include column %q:\n%s", col, out)
 		}
 	}
 	if !strings.Contains(out, "feature") {

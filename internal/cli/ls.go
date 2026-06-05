@@ -18,6 +18,11 @@ type lsEntry struct {
 	Status status.WorktreeStatus `json:"status"`
 }
 
+type liteLsEntry struct {
+	Repo   string                    `json:"repo"`
+	Status status.LiteWorktreeStatus `json:"status"`
+}
+
 func newLsCmd() *cobra.Command {
 	var format string
 	cmd := &cobra.Command{
@@ -31,7 +36,7 @@ func newLsCmd() *cobra.Command {
 			}
 			out := cmd.OutOrStdout()
 
-			var all []lsEntry
+			var all []liteLsEntry
 			for name, r := range cat.Repos {
 				wts, err := worktree.List(r.Path)
 				if err != nil {
@@ -41,8 +46,8 @@ func newLsCmd() *cobra.Command {
 					if wt.IsBare {
 						continue
 					}
-					st := status.GetFull(wt.Path, r.Path, r.MainBranch)
-					all = append(all, lsEntry{Repo: name, Status: st})
+					st := status.GetLite(wt.Path)
+					all = append(all, liteLsEntry{Repo: name, Status: st})
 				}
 			}
 
@@ -54,12 +59,30 @@ func newLsCmd() *cobra.Command {
 				fmt.Fprintln(out, "No active worktrees.")
 				return nil
 			}
-			writeLsTable(out, all)
+			writeLiteLsTable(out, all)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "table", "Output format: table or json")
 	return silenceSubcommand(cmd)
+}
+
+func writeLiteLsTable(out io.Writer, entries []liteLsEntry) {
+	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "REPO\tBRANCH\tREMOTE↕\tPATH")
+	for _, e := range entries {
+		branch := e.Status.Branch
+		if branch == "" {
+			branch = "(detached)"
+		}
+		remote := fmt.Sprintf("%d/%d", e.Status.Ahead, e.Status.Behind)
+		path := e.Status.Path
+		if e.Status.IsOrphaned {
+			path += " (orphaned)"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", e.Repo, branch, remote, path)
+	}
+	_ = tw.Flush()
 }
 
 func writeLsTable(out io.Writer, entries []lsEntry) {
