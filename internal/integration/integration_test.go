@@ -159,6 +159,24 @@ func TestCheckUnknownBranch(t *testing.T) {
 	}
 }
 
+func TestCheckUsesHeadRefWhenTagShadowsBranch(t *testing.T) {
+	dir := fixture(t)
+	git(t, dir, "tag", "feature", "main")
+	git(t, dir, "branch", "feature")
+	git(t, dir, "checkout", "refs/heads/feature")
+	write(t, filepath.Join(dir, "feat.txt"), "feature unique\n")
+	git(t, dir, "add", "feat.txt")
+	git(t, dir, "commit", "-m", "feature work")
+
+	state, err := Check(dir, "feature", "main")
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if state != StateDiverged {
+		t.Errorf("got %s; want %s", state, StateDiverged)
+	}
+}
+
 // TestStateMergedPIDWhitespaceSensitive: whitespace-different patches
 // should not be treated as merged.
 func TestStateMergedPIDWhitespaceSensitive(t *testing.T) {

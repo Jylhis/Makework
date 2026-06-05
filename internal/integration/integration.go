@@ -39,11 +39,14 @@ const (
 // Check returns the integration State of branch relative to
 // defaultBranch in the repo at repoPath. Both refs must resolve.
 func Check(repoPath, branch, defaultBranch string) (State, error) {
-	branchSHA, err := repo.RunGitCapture("-C", repoPath, "rev-parse", branch)
+	branchRef := headRef(branch)
+	defaultRef := headRef(defaultBranch)
+
+	branchSHA, err := repo.RunGitCapture("-C", repoPath, "rev-parse", branchRef)
 	if err != nil {
 		return StateUnknown, err
 	}
-	defaultSHA, err := repo.RunGitCapture("-C", repoPath, "rev-parse", defaultBranch)
+	defaultSHA, err := repo.RunGitCapture("-C", repoPath, "rev-parse", defaultRef)
 	if err != nil {
 		return StateUnknown, err
 	}
@@ -51,7 +54,7 @@ func Check(repoPath, branch, defaultBranch string) (State, error) {
 		return StateSameCommit, nil
 	}
 
-	ok, err := repo.IsAncestor(repoPath, branch, defaultBranch)
+	ok, err := repo.IsAncestor(repoPath, branchRef, defaultRef)
 	if err != nil {
 		return StateUnknown, err
 	}
@@ -59,7 +62,7 @@ func Check(repoPath, branch, defaultBranch string) (State, error) {
 		return StateAncestor, nil
 	}
 
-	empty, err := diffEmpty(repoPath, defaultBranch, branch)
+	empty, err := diffEmpty(repoPath, defaultRef, branchRef)
 	if err != nil {
 		return StateUnknown, err
 	}
@@ -67,7 +70,7 @@ func Check(repoPath, branch, defaultBranch string) (State, error) {
 		return StateNoChanges, nil
 	}
 
-	merged, err := exactPatchesMerged(repoPath, branch, defaultBranch)
+	merged, err := exactPatchesMerged(repoPath, branchRef, defaultRef)
 	if err != nil {
 		return StateUnknown, err
 	}
@@ -76,6 +79,13 @@ func Check(repoPath, branch, defaultBranch string) (State, error) {
 	}
 
 	return StateDiverged, nil
+}
+
+func headRef(name string) string {
+	if strings.HasPrefix(name, "refs/heads/") {
+		return name
+	}
+	return "refs/heads/" + name
 }
 
 // diffEmpty reports whether `git diff --quiet <a>...<b>` exits zero,
