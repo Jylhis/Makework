@@ -3,11 +3,27 @@ name: CI
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      full-matrix:
+        description: Run the full cross-platform matrix.
+        required: false
+        default: "false"
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Cost audit: no cron schedule here. Daily or higher-frequency automation is not
+# justified for this workflow, so the expensive full matrix stays on manual
+# offload only via workflow_dispatch.
 
 permissions:
   contents: read
@@ -17,10 +33,11 @@ jobs:
     name: Go Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: true
       - uses: golangci/golangci-lint-action@v9
         with:
           args: --output.checkstyle.path=golangci-report.xml
@@ -36,10 +53,11 @@ jobs:
     name: Go Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: true
       - run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
       - uses: actions/upload-artifact@v7
         with:
@@ -51,15 +69,16 @@ jobs:
     name: Verify lock sync
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: cachix/install-nix-action@v31
       - run: nix run nixpkgs#just -- verify
 
   nix-build-linux:
     name: nix build (x86_64-linux)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: cachix/install-nix-action@v31
       - uses: cachix/cachix-action@v17
         with:
@@ -69,7 +88,7 @@ jobs:
 
   nix-build-cross:
     name: nix build (${{ matrix.system }})
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' && inputs.full-matrix == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -82,7 +101,7 @@ jobs:
           - os: macos-latest
             system: aarch64-darwin
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: cachix/install-nix-action@v31
       - uses: cachix/cachix-action@v17
         with:
@@ -92,9 +111,10 @@ jobs:
 
   devenv-test-linux:
     name: devenv test (ubuntu-latest)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: cachix/install-nix-action@v31
       - uses: cachix/cachix-action@v17
         with:
@@ -107,10 +127,10 @@ jobs:
 
   devenv-test-macos:
     name: devenv test (macos-latest)
-    if: github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' && inputs.full-matrix == 'true'
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: cachix/install-nix-action@v31
       - uses: cachix/cachix-action@v17
         with:
@@ -124,10 +144,10 @@ jobs:
   sonarqube:
     name: SonarQube
     needs: [go-lint, go-test]
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - uses: actions/download-artifact@v8
@@ -141,7 +161,7 @@ jobs:
         id: go_version
         run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@59db25f34e16620e48ab4bb9e4a5dce155cb5432
+        uses: SonarSource/sonarqube-scan-action@7006c4492b2e0ee0f816d36501671557c97f5995
         with:
           args: -Dsonar.projectVersion=${{ steps.go_version.outputs.version }}
         env:
