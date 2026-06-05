@@ -52,8 +52,10 @@ func rmFixture(t *testing.T, branch string, diverge bool) (barePath, wtPath stri
 	barePath = resolved.Repo.Path
 	wtPath = resolvedWorktreePath(cfg, resolved, branch)
 
-	if out, err := captureOutput(t, "switch", "scratch", branch); err != nil {
-		t.Fatalf("mw switch %s: %v\n%s", branch, err, out)
+	if branch != "trunk" {
+		if out, err := captureOutput(t, "switch", "scratch", branch); err != nil {
+			t.Fatalf("mw switch %s: %v\n%s", branch, err, out)
+		}
 	}
 	if _, err := os.Stat(wtPath); err != nil {
 		t.Fatalf("worktree not created at %s: %v", wtPath, err)

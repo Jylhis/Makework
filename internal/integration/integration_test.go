@@ -161,12 +161,12 @@ func TestCheckUnknownBranch(t *testing.T) {
 
 func TestCheckUsesHeadRefWhenTagShadowsBranch(t *testing.T) {
 	dir := fixture(t)
-	git(t, dir, "tag", "feature", "main")
-	git(t, dir, "branch", "feature")
-	git(t, dir, "checkout", "refs/heads/feature")
+	git(t, dir, "checkout", "-b", "feature")
 	write(t, filepath.Join(dir, "feat.txt"), "feature unique\n")
 	git(t, dir, "add", "feat.txt")
 	git(t, dir, "commit", "-m", "feature work")
+	git(t, dir, "checkout", "main")
+	git(t, dir, "tag", "feature", "main")
 
 	state, err := Check(dir, "feature", "main")
 	if err != nil {
