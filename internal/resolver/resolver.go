@@ -266,14 +266,19 @@ func NeedsDisambiguation(results []Target, threshold float64) bool {
 
 // BuildTargets creates CatalogTarget entries from a Catalog and
 // annotates each with a recent-activity score derived from one
-// `git log --since=30.days.ago` call per repo against the default
-// branch. Errors are swallowed (activity stays 0) so a flaky repo
-// can't break resolution.
-func BuildTargets(cat *catalog.Catalog) []CatalogTarget {
+// `git rev-list --count --since=30.days.ago` call per repo against the
+// default branch when activity scoring is enabled. Errors are swallowed
+// (activity stays 0) so a flaky repo can't break resolution.
+func BuildTargets(cat *catalog.Catalog, cfg *config.ResolverConfig) []CatalogTarget {
 	activity := make(map[string]float64, len(cat.Repos))
-	for repoName, r := range cat.Repos {
-		entries := query.LogWorktree(r.Path, r.MainBranch, repoName, "30.days.ago", nil, nil)
-		activity[repoName] = math.Log1p(float64(len(entries)))
+	if cfg != nil && cfg.WeightActivity > 0 {
+		for repoName, r := range cat.Repos {
+			commitCount, err := query.RecentCommitCount(r.Path, r.MainBranch, "30.days.ago")
+			if err != nil {
+				continue
+			}
+			activity[repoName] = math.Log1p(float64(commitCount))
+		}
 	}
 
 	var targets []CatalogTarget
