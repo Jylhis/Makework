@@ -150,7 +150,11 @@ func newGoCmd() *cobra.Command {
 					return err
 				}
 				chosen := sel.Value.(resolver.Target)
-				resolved, err := cat.FindProjectUnambiguous(chosen.RepoName)
+				name := chosen.RepoName
+				if chosen.ProjectName != "" {
+					name = chosen.ProjectName
+				}
+				resolved, err := cat.FindProjectUnambiguous(name)
 				if err != nil {
 					return err
 				}
