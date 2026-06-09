@@ -63,3 +63,26 @@ func TestPickEmptyItems(t *testing.T) {
 		t.Errorf("expected ErrNoItems, got %v", err)
 	}
 }
+
+func TestPickStdinFallbackSanitizesControlChars(t *testing.T) {
+	items := []Item{{Label: "evil\nname\t\x1b[31m", Sub: "sub\rvalue"}}
+	var out bytes.Buffer
+
+	_, err := pickViaStdin(items, "pick", strings.NewReader("1\n"), &out)
+	if err != nil {
+		t.Fatalf("pickViaStdin: %v", err)
+	}
+
+	rendered := out.String()
+	if strings.Contains(rendered, "\nname") || strings.Contains(rendered, "\t\x1b") || strings.Contains(rendered, "\r") {
+		t.Fatalf("expected control chars to be sanitized, got %q", rendered)
+	}
+}
+
+func TestSanitizeForPicker(t *testing.T) {
+	got := sanitizeForPicker("a\nb\tc\rd\x1b")
+	want := "a�b�c�d�"
+	if got != want {
+		t.Fatalf("sanitizeForPicker() = %q, want %q", got, want)
+	}
+}
