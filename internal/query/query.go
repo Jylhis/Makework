@@ -3,11 +3,16 @@ package query
 
 import (
 	"cmp"
+	"context"
 	"os/exec"
+	"strconv"
 	"slices"
 	"strings"
+	"time"
 	"unicode"
 )
+
+const recentCommitCountTimeout = 2 * time.Second
 
 // Entry is one parsed commit from git log.
 type Entry struct {
@@ -102,4 +107,24 @@ func LogWorktree(wtPath, branch, repoName, since string, until, author *string) 
 		}
 	}
 	return entries
+}
+
+// RecentCommitCount returns the number of commits since the provided window,
+// bounded by a short timeout to avoid expensive log scans impacting UX.
+func RecentCommitCount(wtPath, branch, since string) (int, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), recentCommitCountTimeout)
+	defer cancel()
+
+	out, err := exec.CommandContext(ctx, "git", "-C", wtPath, "rev-list", "--count", "--since="+since, branch).Output()
+	if err != nil {
+		return 0, err
+	}
+	count, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		return 0, err
+	}
+	if count < 0 {
+		return 0, nil
+	}
+	return count, nil
 }
