@@ -15,8 +15,9 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"strconv"
 	"strings"
+	"strconv"
+	"unicode"
 )
 
 // Item is one selectable entry. Label is the displayed text, Sub a
@@ -71,7 +72,7 @@ func pickViaFzf(items []Item, title string) (Item, error) {
 
 	var stdin strings.Builder
 	for i, it := range items {
-		fmt.Fprintf(&stdin, "%d\t%s\t%s\n", i, it.Label, it.Sub)
+		fmt.Fprintf(&stdin, "%d\t%s\t%s\n", i, sanitizeForPicker(it.Label), sanitizeForPicker(it.Sub))
 	}
 	cmd.Stdin = strings.NewReader(stdin.String())
 
@@ -98,9 +99,9 @@ func pickViaStdin(items []Item, title string, in io.Reader, out io.Writer) (Item
 	}
 	for i, it := range items {
 		if it.Sub != "" {
-			fmt.Fprintf(out, "  %d. %s\t%s\n", i+1, it.Label, it.Sub)
+			fmt.Fprintf(out, "  %d. %s\t%s\n", i+1, sanitizeForPicker(it.Label), sanitizeForPicker(it.Sub))
 		} else {
-			fmt.Fprintf(out, "  %d. %s\n", i+1, it.Label)
+			fmt.Fprintf(out, "  %d. %s\n", i+1, sanitizeForPicker(it.Label))
 		}
 	}
 	fmt.Fprintf(out, "Pick [1-%d]: ", len(items))
@@ -121,4 +122,13 @@ func pickViaStdin(items []Item, title string, in io.Reader, out io.Writer) (Item
 		return Item{}, fmt.Errorf("out of range: %d (have 1..%d)", n, len(items))
 	}
 	return items[n-1], nil
+}
+
+func sanitizeForPicker(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return '�'
+		}
+		return r
+	}, s)
 }
