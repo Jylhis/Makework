@@ -80,8 +80,8 @@ func TestPickStdinFallbackSanitizesControlChars(t *testing.T) {
 }
 
 func TestSanitizeForPicker(t *testing.T) {
-	got := sanitizeForPicker("a\nb\tc\rd\x1b")
-	want := "a�b�c�d�"
+	got := sanitizeForPicker("a\nb\tc\rd\x1b\u202e")
+	want := "abcd"
 	if got != want {
 		t.Fatalf("sanitizeForPicker() = %q, want %q", got, want)
 	}
