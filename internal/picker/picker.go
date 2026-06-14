@@ -126,9 +126,13 @@ func pickViaStdin(items []Item, title string, in io.Reader, out io.Writer) (Item
 
 func sanitizeForPicker(s string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return '�'
+		if unicode.IsControl(r) || isBidi(r) {
+			return ''
 		}
 		return r
 	}, s)
+}
+
+func isBidi(r rune) bool {
+	return (r >= 0x202a && r <= 0x202e) || (r >= 0x2066 && r <= 0x2069) || r == 0x200e || r == 0x200f
 }
