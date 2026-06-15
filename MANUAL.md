@@ -480,7 +480,7 @@ Notes when disambiguation would trigger (top two within 10%).
 
 ### 5.14 `mw wt` — worktrunk-compatible commands (current repo)
 
-A subset of the [worktrunk](https://github.com/) CLI surface scoped to the repo
+A subset of the `worktrunk` CLI surface scoped to the repo
 that owns `$PWD` (auto-detected, so no project argument). Useful when you already
 `cd`'d into a repo.
 
@@ -1220,7 +1220,6 @@ mw config show
 mw config set worktree_root ~/wts
 mw project init                      # .makework.toml template
 mw project show api                  # resolved metadata + Nix
-```
 ```
 
 ---
