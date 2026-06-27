@@ -92,7 +92,9 @@ mw ls                            # status across all worktrees
 
 ### Requirements
 
-- **Go 1.23+** (the module targets Go 1.26; any recent toolchain works to build).
+- **Go 1.26+** for source builds — `go.mod` declares `go 1.26`, so `go install`
+  / `go build` needs a Go 1.26 toolchain (or it will auto-download one). Older
+  toolchains (1.23–1.25) will fail unless toolchain auto-download is available.
 - **git 2.5+** for worktrees; **git 2.25+** if you use sparse-checkout.
 
 ### Optional runtime dependencies
@@ -209,12 +211,14 @@ mw init bash >> ~/.bashrc
 mw init zsh  >> ~/.zshrc
 ```
 
-`mw init <shell>` outputs completions, the navigation wrapper, **and** a
-directory-change hook. The hook calls `mw visit "$PWD"` on every `cd`:
+`mw init <shell>` outputs completions, the navigation wrapper, and (for bash/zsh
+only) a directory-change hook. The hook calls `mw visit "$PWD"` on every `cd`:
 
 - **zsh** registers a `chpwd` hook (`add-zsh-hook chpwd ...`).
 - **bash** appends to `PROMPT_COMMAND` (guarded by a sentinel to avoid double
   installation).
+- **fish / powershell** get no visit hook — frecency only updates through
+  successful `mw go` navigations on those shells.
 
 `mw visit` is a fast path: it consults the cached list of bare-clone roots and
 returns immediately if you are not inside a known repo, so it adds only
@@ -226,14 +230,15 @@ you `cd` around manually rather than through `mw go`.
 `mw go` prints up to three lines:
 
 ```
-/path/to/worktree            # line 1: destination (always present)
-nix develop                  # line 2: activation command (optional)
-/path/to/worktree            # line 3: dir to activate in (only for subprojects)
+/path/to/worktree/services/api   # line 1: destination cd target (subproject path, or worktree root)
+nix develop                      # line 2: activation command (optional)
+/path/to/worktree                # line 3: worktree root — only emitted for subprojects
 ```
 
-The wrapper `cd`s into line 1, and if line 2 is present, `eval`s it (in the
-line-3 directory when given, so monorepo subproject envs activate in the right
-place).
+The wrapper `cd`s into line 1. If line 2 is present, it then `cd`s into line 3
+when given (the worktree root) and `eval`s the activation command there. So for a
+subproject you land in the subproject directory, but the activation itself runs
+at the worktree root — see [§9](#9-nix-auto-activation) for the implications.
 
 ### Bypassing the wrapper
 
@@ -293,9 +298,15 @@ A worktree is created on first navigation to a `(repo, ref)` pair; subsequent
 visits reuse it. On creation Makework also applies sparse-checkout, copies the
 template directory, runs post-create hooks (if allowed), and records a visit.
 
+> **`mw go` does not create new branches.** It runs `git worktree add <path> <ref>`,
+> so `<ref>` must already resolve — an existing local branch, or a name that
+> matches exactly one remote-tracking branch (git's DWIM creates a local tracking
+> branch in that case). A brand-new branch name that exists nowhere will fail.
+> To start a *new* branch, use `mw switch <project> <branch> -c`.
+
 ```sh
 mw go myapp                  # main branch
-mw go myapp feature/auth     # specific branch (created if missing)
+mw go myapp feature/auth     # check out an EXISTING ref (worktree created if missing)
 mw go myapp@develop          # explicit repo@branch
 mw go api                    # fuzzy match
 mw go --list api             # show scored candidates, don't move
@@ -304,8 +315,13 @@ mw go myapp pr:42            # check out the branch behind GitHub PR #42
 
 ### 5.2 `mw switch <project> <ref>` — create a worktree (no implicit navigation)
 
-Creates (or reuses) a worktree and prints its path. Scriptable analog to
-`mw go` without fuzzy matching. In older docs this is `mw new`.
+Creates a worktree and prints its path. Scriptable analog to `mw go` without
+fuzzy matching. In older docs this is `mw new`.
+
+Without `-c`, `switch` runs `git worktree add <path> <ref>`, so `<ref>` must
+already exist (or match a single remote branch); it does **not** create an
+arbitrary new branch, and it will error if the worktree path already exists. Use
+`-c` to create a new branch (off `--base`, defaulting to the main branch).
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -313,16 +329,21 @@ Creates (or reuses) a worktree and prints its path. Scriptable analog to
 | `--base` | `-b` | "" | Base branch for `-c` (defaults to the repo's main branch). |
 
 ```sh
-mw switch myapp feature/auth          # worktree for an existing/new ref
+mw switch myapp feature/auth          # worktree for an EXISTING ref
 mw switch myapp fix/login -c          # new branch off main
 mw switch myapp hotfix -c -b release/v2  # new branch off release/v2
 ```
 
 ### 5.3 `mw rm <target>` — remove a worktree (and its branch)
 
-`target` must be `<project>/<ref>` or `<project>@<ref>`. Removes the worktree and,
-unless told otherwise, deletes the branch **if it is integrated** (merged) into
-the default branch. Refuses to remove the default branch.
+`target` must be `<project>/<ref>` or `<project>@<ref>`. Removes the worktree
+first, then — unless told otherwise — deletes the branch **if it is integrated**
+(merged) into the default branch.
+
+> Note: `rm` does **not** refuse to remove the default branch's *worktree*. It
+> removes the worktree regardless; if `<ref>` is the default branch it then keeps
+> the *branch* (printing `Branch <ref> kept (default branch)`). Diverged branches
+> are kept unless you pass `-D`.
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -427,8 +448,13 @@ See [§11](#11-configuration-reference) for all keys.
 
 ### 5.11 `mw search <pattern>` (alias `mw grep`) — search across worktrees
 
-Greps every active worktree (shells out to `grep -rn`) and groups results by
-repo.
+Greps the **main-branch worktree** of each registered repo (shells out to
+`grep -rn`) and groups results by repo.
+
+> Scope caveat: `mw search` computes one worktree path per repo using the repo's
+> main branch and searches only that directory — it does **not** iterate every
+> active worktree. Matches that live only in a feature-branch worktree are not
+> found. Repos whose main-branch worktree doesn't exist on disk are skipped.
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
@@ -502,9 +528,14 @@ The `wt list` JSON/table carries richer status than `mw ls`: `STATUS` symbols,
 
 | Subcommand | Description |
 |------------|-------------|
-| `mw maintenance start` | Register all bare repos with `git maintenance`. |
-| `mw maintenance stop` | Unregister all bare repos. |
-| `mw maintenance status` | Report registered / not registered per bare repo. |
+| `mw maintenance start` | Register the repo of the **current directory** with `git maintenance`. |
+| `mw maintenance stop` | Unregister the repo of the current directory. |
+| `mw maintenance status` | Report registered / not registered for the current directory's repo. |
+
+> Scope caveat: despite the command help text saying "all bare repos", these
+> subcommands operate only on the git repository containing your current working
+> directory (`os.Getwd()`); they do not load the catalog or iterate every repo.
+> Run them from inside each worktree/clone you want registered.
 
 ### 5.16 `mw ai init` — output the Claude Code skill
 
@@ -517,8 +548,13 @@ mkdir -p .claude/skills && mw ai init > .claude/skills/makework.md
 ### 5.17 `mw init [shell]` — initialize or emit shell integration
 
 - **No argument:** create config, catalog, and state directories.
-- **With `bash`/`zsh`/`fish`/`powershell`:** emit completions, the `mw go`
-  wrapper, and the visit-tracking hook.
+- **With a shell argument:** emit completions plus, depending on the shell:
+  - **`bash` / `zsh`** — native completions, the `mw go` wrapper, **and** the
+    visit-tracking hook (full integration).
+  - **`fish`** — native completions and the `mw go` wrapper, but **no** visit
+    hook (frecency-on-`cd` is not installed for fish yet).
+  - **`powershell`** — native completions **only**: no `mw go` wrapper and no
+    visit hook.
 
 ### 5.18 `mw completions <shell>` — completions + wrapper
 
@@ -720,11 +756,21 @@ After navigating, Makework prints an activation command that the shell wrapper
 If nothing matches, no activation is printed and you keep your parent shell
 environment.
 
-### Subproject activation
+### Where detection and activation happen
 
-For monorepos, the activation command runs in the **subproject's** directory
-(via the optional third output line), so `services/api/devenv.nix` activates
-correctly even though the bare clone is rooted at the repo top.
+Detection runs at the **worktree root** (`nix.Detect(<worktreeRoot>, …)`), and
+the shell wrapper `eval`s the activation command at the worktree root too. For a
+subproject, `mw go` emits three lines — the subproject path, the activation
+command, and the worktree root — and the wrapper `cd`s into the subproject, then
+`cd`s back to the worktree root before running the activation.
+
+> Practical consequence: a Nix file that exists **only** under a subdirectory
+> (e.g. `services/api/devenv.nix`) is **not** auto-detected — detection looks at
+> the worktree root, and `nix develop` / `devenv shell` then run there. To drive
+> a subproject environment you must set an explicit `[nix]` table (with a `type`)
+> on the subproject in the catalog so the activation command is chosen, and the
+> Nix tool itself must be able to resolve the environment from the worktree root.
+> Repo-root Nix files work as described in the detection order above.
 
 Inspect what will run before navigating:
 
@@ -736,9 +782,20 @@ mw project show api    # prints the resolved Nix configuration
 
 ## 10. Monorepos: Subprojects & Sparse Checkout
 
-A **subproject** is a logical project inside a larger repository. Define them in
-the repo-root `.makework.toml`, commit it, and anyone with `mw` picks them up
-after `mw repo add`/`mw repo sync`.
+A **subproject** is a logical project inside a larger repository, defined in the
+repo-root `.makework.toml`.
+
+> **Important — subprojects are not auto-imported (as of 0.1.0).** `mw repo add`
+> and `mw repo sync` register the repo with an **empty** project map and never
+> parse `.makework.toml`. The only thing `mw` reads `.makework.toml` for is
+> **post-create hooks** at worktree creation. The resolver builds its targets
+> from `catalog.toml` only, so subproject-by-name navigation (`mw go api`),
+> per-subproject sparse-checkout, and per-subproject Nix take effect **only for
+> subprojects that exist in `catalog.toml`** — which today means adding them by
+> hand via `mw repo edit`. The schema below is what a catalog subproject entry
+> looks like; committing it as `.makework.toml` documents intent but does not, on
+> its own, make `mw go api` resolve. (The bundled `docs/` site currently
+> overstates this; it is tracked as a gap.)
 
 ```toml
 main_branch = "main"
@@ -761,14 +818,19 @@ path = "apps/web"
 devshell = "node"
 ```
 
+Once a subproject is present in the catalog:
+
 - **Navigate by name:** `mw go api` routes into `services/api` of the parent
   monorepo; `mw go web` into `apps/web`.
 - **Sparse checkout:** when `sparse_paths` is set, only those directories are
   populated (`git sparse-checkout init --cone` + `set`). Requires git 2.25+.
   Different subprojects in the same repo get separate worktrees with their own
   sparse configuration.
-- **Per-subproject Nix:** each subproject can declare its own `[nix]` table,
-  activated in its own directory; omit it to fall back to repo-wide detection.
+- **Per-subproject Nix:** a subproject can declare its own `[nix]` table to
+  select the activation command. As noted in [§9](#9-nix-auto-activation),
+  detection and activation still run at the worktree root, not the subproject
+  directory — so the `[nix]` `type` chooses the command, but the Nix files/flake
+  must resolve from the worktree root.
 
 Inspect a resolved subproject:
 
@@ -985,9 +1047,17 @@ Interactive commands:
 | Command | Effect |
 |---------|--------|
 | `M-x makework-go` | `completing-read` over projects, set `default-directory`, optionally activate Nix via `compile`. |
-| `M-x makework-status` | Run `mw`/status into a read-only `*makework-status*` buffer. |
+| `M-x makework-status` | Run `mw` into a read-only `*makework-status*` buffer. |
 | `M-x makework-sync` | Run `mw repo sync`, report newly registered repos. |
 | `M-x makework-fetch` | Run `mw fetch` in a compilation buffer. |
+
+> Caveat (0.1.0): `makework.el` is partly out of sync with the current CLI. Its
+> project picker shells out to `mw catalog list`, but the command is now
+> `mw repo list` (`catalog` was renamed to `repo`), so `makework-go`'s completion
+> list comes back empty. `makework-status` runs bare `mw`, which prints help
+> rather than a status overview (use `mw ls` for status). `makework-sync` and
+> `makework-fetch` work as written. Treat the package as a starting point until
+> it is updated.
 
 Run the ERT tests with:
 
