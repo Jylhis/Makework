@@ -24,7 +24,7 @@ func Path(worktreeRoot string, parsedURL *repo.ParsedURL, repoName, branch strin
 	}
 
 	sanitized := SanitizeBranch(branch)
-	for _, p := range strings.Split(sanitized, "/") {
+	for p := range strings.SplitSeq(sanitized, "/") {
 		if p != "" {
 			parts = append(parts, p)
 		}
@@ -71,9 +71,8 @@ func SanitizeBranch(refName string) string {
 			b.WriteRune(ch)
 		}
 	}
-	parts := strings.Split(b.String(), "/")
 	var filtered []string
-	for _, p := range parts {
+	for p := range strings.SplitSeq(b.String(), "/") {
 		// Drop empty, "." and ".." segments so a hostile ref like
 		// "foo/../../etc" cannot escape worktree_root even if the
 		// caller forgets to run IsContainedPath afterwards. git

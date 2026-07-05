@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/config"
@@ -103,7 +104,7 @@ func newGoCmd() *cobra.Command {
 				resolverCfg = *cfg.Resolver
 			}
 			index := &resolver.Index{
-				Targets: resolver.BuildTargets(cat),
+				Targets: resolver.BuildTargets(cat, &resolverCfg),
 				Visits:  loadVisits(),
 			}
 			ctx := resolver.DefaultContext()
@@ -199,6 +200,16 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 	}
 	ref = resolvedRef
 	wtPath := resolvedWorktreePath(cfg, resolved, ref)
+	if err := ensureSingleLineShellField("worktree path", wtPath); err != nil {
+		return err
+	}
+	finalPath := wtPath
+	if resolved.SubprojectPath != "" {
+		finalPath = wtPath + "/" + resolved.SubprojectPath
+	}
+	if err := ensureSingleLineShellField("navigation path", finalPath); err != nil {
+		return err
+	}
 
 	newlyCreated := false
 	if !fsx.PathExists(wtPath) {
@@ -220,12 +231,12 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 		runPostCreateHooks(wtPath, resolved.Repo.Name, ref, hooksEnabled, os.Stderr)
 	}
 
-	finalPath := wtPath
-	if resolved.SubprojectPath != "" {
-		finalPath = wtPath + "/" + resolved.SubprojectPath
-	}
-
 	nixResult := nix.Detect(wtPath, resolved.NixConfig)
+	if nixResult != nil {
+		if err := ensureSingleLineShellField("activation command", nixResult.ActivationCommand); err != nil {
+			return err
+		}
+	}
 
 	fmt.Fprintln(out, finalPath)
 	if nixResult != nil {
@@ -236,6 +247,15 @@ func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, r
 	}
 
 	recordVisit(resolved.Repo.Name, ref)
+	return nil
+}
+
+func ensureSingleLineShellField(name, value string) error {
+	if strings.ContainsFunc(value, func(r rune) bool {
+		return unicode.IsControl(r) || unicode.Is(unicode.Cf, r)
+	}) {
+		return fmt.Errorf("%s contains a control character and cannot be emitted to shell integration", name)
+	}
 	return nil
 }
 
@@ -260,7 +280,7 @@ func resolveBranchShortcut(ref string, resolved *catalog.ResolvedProject) (strin
 	slug := ""
 	if resolved.Repo.URL != nil {
 		if p, ok := repo.ParseRemoteURL(*resolved.Repo.URL); ok {
-			slug = strings.Join(p.Segments, "/")
+			slug = p.Host + "/" + strings.Join(p.Segments, "/")
 		}
 	}
 	branch, ok, err := refshortcut.Resolve(ref, resolved.Repo.Path, slug)

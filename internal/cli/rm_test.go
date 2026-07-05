@@ -9,11 +9,11 @@ import (
 )
 
 // rmFixture sets up an isolated XDG env, runs `mw init`, creates a
-// scratch repo with `main` (one commit) and one extra branch shaped
+// scratch repo with `trunk` (one commit) and one extra branch shaped
 // according to `diverge`, then registers it with `mw repo add` and
 // switches to create the worktree.
 //
-// When diverge is false the branch points at the same commit as main
+// When diverge is false the branch points at the same commit as trunk
 // (StateSameCommit). When true the branch has an additional commit
 // (StateDiverged).
 //
@@ -28,15 +28,17 @@ func rmFixture(t *testing.T, branch string, diverge bool) (barePath, wtPath stri
 
 	scratch := filepath.Join(home, "scratch")
 	mustMkdir(t, scratch)
-	runGit(t, scratch, "init", "-q", "-b", "main")
+	runGit(t, scratch, "init", "-q", "-b", "trunk")
 	runGit(t, scratch, "-c", "user.name=t", "-c", "user.email=t@t",
 		"commit", "-q", "--allow-empty", "-m", "init")
-	runGit(t, scratch, "checkout", "-q", "-b", branch)
+	if branch != "trunk" {
+		runGit(t, scratch, "checkout", "-q", "-b", branch)
+	}
 	if diverge {
 		runGit(t, scratch, "-c", "user.name=t", "-c", "user.email=t@t",
 			"commit", "-q", "--allow-empty", "-m", "feature work")
 	}
-	runGit(t, scratch, "checkout", "-q", "main")
+	runGit(t, scratch, "checkout", "-q", "trunk")
 
 	if out, err := captureOutput(t, "repo", "add", scratch); err != nil {
 		t.Fatalf("mw repo add: %v\n%s", err, out)
@@ -50,8 +52,10 @@ func rmFixture(t *testing.T, branch string, diverge bool) (barePath, wtPath stri
 	barePath = resolved.Repo.Path
 	wtPath = resolvedWorktreePath(cfg, resolved, branch)
 
-	if out, err := captureOutput(t, "switch", "scratch", branch); err != nil {
-		t.Fatalf("mw switch %s: %v\n%s", branch, err, out)
+	if branch != "trunk" {
+		if out, err := captureOutput(t, "switch", "scratch", branch); err != nil {
+			t.Fatalf("mw switch %s: %v\n%s", branch, err, out)
+		}
 	}
 	if _, err := os.Stat(wtPath); err != nil {
 		t.Fatalf("worktree not created at %s: %v", wtPath, err)
@@ -68,7 +72,7 @@ func branchExists(t *testing.T, barePath, branch string) bool {
 	return strings.TrimSpace(string(out)) != ""
 }
 
-// TestRmAutoDeletesMergedBranch: a branch at the same commit as main
+// TestRmAutoDeletesMergedBranch: a branch at the same commit as trunk
 // is auto-deleted after rm.
 func TestRmAutoDeletesMergedBranch(t *testing.T) {
 	barePath, wtPath := rmFixture(t, "merged", false)
@@ -122,5 +126,18 @@ func TestRmForceDeleteRemovesDivergedBranch(t *testing.T) {
 	}
 	if branchExists(t, barePath, "diverged") {
 		t.Error("diverged branch should have been force-deleted with -D")
+	}
+}
+
+// TestRmKeepsDefaultBranch: default branch is never auto-deleted.
+func TestRmKeepsDefaultBranch(t *testing.T) {
+	barePath, _ := rmFixture(t, "trunk", false)
+
+	out, err := captureOutput(t, "rm", "scratch/trunk")
+	if err != nil {
+		t.Fatalf("mw rm: %v\n%s", err, out)
+	}
+	if !branchExists(t, barePath, "trunk") {
+		t.Error("default branch 'trunk' should never be auto-deleted")
 	}
 }

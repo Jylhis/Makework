@@ -51,7 +51,7 @@ func resolveVisit(visitPath string) (repoName, branch string, ok bool) {
 	}
 
 	var matched string
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		root := strings.TrimSpace(line)
 		if root == "" {
 			continue

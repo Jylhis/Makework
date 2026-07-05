@@ -31,7 +31,7 @@ func newResolverCmd() *cobra.Command {
 					resolverCfg = *cfg.Resolver
 				}
 				index := &resolver.Index{
-					Targets: resolver.BuildTargets(cat),
+					Targets: resolver.BuildTargets(cat, &resolverCfg),
 					Visits:  loadVisits(),
 				}
 				ctx := resolver.DefaultContext()
