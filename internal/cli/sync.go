@@ -6,6 +6,7 @@ import (
 
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/fsx"
+	"github.com/jylhis/makework/internal/terminal"
 	"github.com/jylhis/makework/internal/xdgpath"
 	"github.com/spf13/cobra"
 )
@@ -61,10 +62,11 @@ func newSyncCmd() *cobra.Command {
 				}
 			}
 
-			fmt.Fprintf(out, "Scanning: %s\n", strings.Join(scanRoots, ", "))
+			fmt.Fprintf(out, "Scanning: %s\n", terminal.SanitizeText(strings.Join(scanRoots, ", ")))
 			added, err := cat.Sync(cfg, scanRoots, catalog.SyncOptions{
 				MaxDepth: maxDepth,
 				Exclude:  mergedExclude,
+				Progress: cmd.ErrOrStderr(),
 			})
 			if err != nil {
 				return err
@@ -74,7 +76,7 @@ func newSyncCmd() *cobra.Command {
 			} else {
 				fmt.Fprintf(out, "Registered %d new repo(s):\n", len(added))
 				for _, name := range added {
-					fmt.Fprintf(out, "  %s\n", name)
+					fmt.Fprintf(out, "  %s\n", terminal.SanitizeText(name))
 				}
 			}
 			writeRepoRootsCache(cat)

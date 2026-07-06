@@ -35,7 +35,7 @@ func AcquireLock(path string) (io.Closer, error) {
 		_ = f.Close()
 		return nil, err
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
 		_ = f.Close() // best-effort close on flock failure
 		return nil, err
 	}

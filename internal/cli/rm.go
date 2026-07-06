@@ -51,6 +51,10 @@ func newRmCmd() *cobra.Command {
 					defaultBranch = d
 				}
 			}
+			if defaultBranch != "" && refName == defaultBranch {
+				fmt.Fprintf(out, "Branch %s kept (default branch)\n", refName)
+				return nil
+			}
 
 			state, err := integration.Check(resolved.Repo.Path, refName, defaultBranch)
 			if err != nil {

@@ -108,6 +108,60 @@ func TestRepoAddWritesRepoRootsCache(t *testing.T) {
 	}
 }
 
+func TestRepoSyncReportsProgress(t *testing.T) {
+	home := setupIsolatedEnv(t)
+	if _, err := captureOutput(t, "init"); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	scanRoot := filepath.Join(home, "scan")
+	mustMkdir(t, scanRoot)
+	initSourceRepo(t, scanRoot, "source-repo")
+	if _, err := captureOutput(t, "config", "set", "scan_roots", scanRoot); err != nil {
+		t.Fatalf("config set scan_roots: %v", err)
+	}
+
+	out, err := captureOutput(t, "repo", "sync")
+	if err != nil {
+		t.Fatalf("repo sync: %v\n%s", err, out)
+	}
+	for _, want := range []string{
+		"Scanning: " + scanRoot,
+		"Walking " + scanRoot,
+		"found repo: " + filepath.Join(scanRoot, "source-repo"),
+		"Registering " + filepath.Join(scanRoot, "source-repo"),
+		"Registered 1 new repo(s):",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected %q in repo sync output:\n%s", want, out)
+		}
+	}
+}
+
+func TestRepoSyncSanitizesProgressOutput(t *testing.T) {
+	home := setupIsolatedEnv(t)
+	if _, err := captureOutput(t, "init"); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	scanRoot := filepath.Join(home, "scan_\x1b]52;c;U0VDUkVUX0NMSVA=\a_ansi")
+	mustMkdir(t, scanRoot)
+	if _, err := captureOutput(t, "config", "set", "scan_roots", scanRoot); err != nil {
+		t.Fatalf("config set scan_roots: %v", err)
+	}
+
+	out, err := captureOutput(t, "repo", "sync")
+	if err != nil {
+		t.Fatalf("repo sync: %v\n%s", err, out)
+	}
+	for _, control := range []string{"\x1b", "\a"} {
+		if strings.Contains(out, control) {
+			t.Fatalf("repo sync output contains raw terminal control sequence %q: %q", control, out)
+		}
+	}
+	if !strings.Contains(out, "scan_�]52;c;U0VDUkVUX0NMSVA=�_ansi") {
+		t.Fatalf("expected sanitized scan root in repo sync output, got %q", out)
+	}
+}
+
 func TestRepoRmUpdatesRepoRootsCache(t *testing.T) {
 	home := setupIsolatedEnv(t)
 	if _, err := captureOutput(t, "init"); err != nil {

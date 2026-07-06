@@ -2,6 +2,7 @@
 # Called from devenv.nix, default.nix, and flake.nix.
 {
   pkgs,
+  lib ? pkgs.lib,
   src ? pkgs.lib.cleanSource ./..,
 }:
 let
@@ -10,7 +11,7 @@ let
   mw-bin = pkgs.buildGoModule {
     pname = "mw";
     inherit version src;
-    vendorHash = "sha256-nDLncfH+2TbcuHqjd4bUXyh8FqgIILZWJP3kBzwzzrA=";
+    vendorHash = "sha256-Xv38pJptYuN22F3ilEYazhUizRaWAsJpNt6jzbUnHjg=";
     subPackages = [ "cmd/mw" ];
     ldflags = [
       "-s"

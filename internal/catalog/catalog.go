@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -29,6 +30,7 @@ type Catalog struct {
 type SyncOptions struct {
 	MaxDepth uint32
 	Exclude  []string
+	Progress io.Writer
 }
 
 // InitResult describes what `Init` created or found.
@@ -136,6 +138,13 @@ func (c *Catalog) Save() error {
 	}
 	defer unlock()
 
+	mode := os.FileMode(0o644)
+	if st, err := os.Stat(path); err == nil {
+		mode = st.Mode().Perm()
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".catalog.*.tmp")
 	if err != nil {
 		return err
@@ -151,7 +160,7 @@ func (c *Catalog) Save() error {
 		cleanup()
 		return err
 	}
-	if err := os.Chmod(tmpName, 0o644); err != nil {
+	if err := os.Chmod(tmpName, mode); err != nil {
 		cleanup()
 		return err
 	}

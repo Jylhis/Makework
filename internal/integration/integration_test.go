@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"crypto/sha256"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -98,8 +99,8 @@ func TestStateNoChanges(t *testing.T) {
 	}
 }
 
-// TestStateMergedPID: feature has a commit with the same patch as a
-// commit on main (squash-merge scenario). git patch-id matches.
+// TestStateMergedPID: feature has a commit with the same exact patch as a
+// commit on main (squash-merge scenario).
 func TestStateMergedPID(t *testing.T) {
 	dir := fixture(t)
 	git(t, dir, "checkout", "-b", "feature")
@@ -108,7 +109,7 @@ func TestStateMergedPID(t *testing.T) {
 	git(t, dir, "commit", "-m", "feature: add x")
 
 	// Main applies the same diff in a separate commit (simulating squash-
-	// merge): add x.txt with identical content. Patch-ids match.
+	// merge): add x.txt with identical content.
 	git(t, dir, "checkout", "main")
 	write(t, filepath.Join(dir, "x.txt"), "feature change\n")
 	git(t, dir, "add", "x.txt")
@@ -155,5 +156,72 @@ func TestCheckUnknownBranch(t *testing.T) {
 	dir := fixture(t)
 	if _, err := Check(dir, "nonexistent", "main"); err == nil {
 		t.Error("expected error for missing branch")
+	}
+}
+
+func TestCheckUsesHeadRefWhenTagShadowsBranch(t *testing.T) {
+	dir := fixture(t)
+	git(t, dir, "checkout", "-b", "feature")
+	write(t, filepath.Join(dir, "feat.txt"), "feature unique\n")
+	git(t, dir, "add", "feat.txt")
+	git(t, dir, "commit", "-m", "feature work")
+	git(t, dir, "checkout", "main")
+	git(t, dir, "tag", "feature", "main")
+
+	state, err := Check(dir, "feature", "main")
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if state != StateDiverged {
+		t.Errorf("got %s; want %s", state, StateDiverged)
+	}
+}
+
+// TestStateMergedPIDWhitespaceSensitive: whitespace-different patches
+// should not be treated as merged.
+func TestStateMergedPIDWhitespaceSensitive(t *testing.T) {
+	dir := fixture(t)
+	git(t, dir, "checkout", "-b", "feature")
+	write(t, filepath.Join(dir, "Makefile"), "all:\n\t@echo feature\n")
+	git(t, dir, "add", "Makefile")
+	git(t, dir, "commit", "-m", "feature makefile")
+
+	git(t, dir, "checkout", "main")
+	write(t, filepath.Join(dir, "Makefile"), "all:\n        @echo feature\n")
+	git(t, dir, "add", "Makefile")
+	git(t, dir, "commit", "-m", "main whitespace variant")
+
+	state, err := Check(dir, "feature", "main")
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if state != StateDiverged {
+		t.Errorf("got %s; want %s", state, StateDiverged)
+	}
+}
+
+func TestPatchSignaturesDigestExactPatchText(t *testing.T) {
+	dir := fixture(t)
+	git(t, dir, "checkout", "-b", "feature")
+	write(t, filepath.Join(dir, "x.txt"), "feature change\n")
+	git(t, dir, "add", "x.txt")
+	git(t, dir, "commit", "-m", "feature: add x")
+	sha := git(t, dir, "rev-parse", "HEAD")
+
+	sigs, err := patchSignatures(dir, "main..feature")
+	if err != nil {
+		t.Fatalf("patchSignatures: %v", err)
+	}
+	if len(sigs) != 1 {
+		t.Fatalf("patchSignatures returned %d signatures, want 1", len(sigs))
+	}
+
+	patch, err := exec.Command("git", "-C", dir, "show", "--pretty=format:", "--no-ext-diff", sha).Output()
+	if err != nil {
+		t.Fatalf("git show: %v", err)
+	}
+	want := sha256.Sum256(patch)
+	if sigs[0] != want {
+		t.Fatalf("signature digest mismatch")
 	}
 }

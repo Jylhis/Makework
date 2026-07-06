@@ -78,11 +78,23 @@ list.
 ## Development
 
 ```sh
-devenv shell                # enter dev shell (Go, golangci-lint, gopls, just)
-just test                   # go test ./...
+just dev                    # enter dev shell (Go, golangci-lint, gopls, just)
+just test                   # go test -race ./...
 just lint                   # golangci-lint run
 just fmt                    # treefmt (gofmt + nixfmt)
 just check                  # full flake check (build, lint, tests, fmt)
 ```
 
-See [`CLAUDE.md`](./CLAUDE.md) for the workspace layout.
+See [`CLAUDE.md`](./CLAUDE.md) for the workspace layout,
+[`AGENTS.md`](./AGENTS.md) for the agent / contributor guide, and
+[`docs/DOGFOOD.md`](./docs/DOGFOOD.md) for how Makework is used day-to-day.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md). This project follows the
+[Jylhis engineering principles](https://github.com/Jylhis/virt-corp/blob/main/docs/ENGINEERING_PRINCIPLES.md)
+and [way of working](https://github.com/Jylhis/virt-corp/blob/main/docs/WAY_OF_WORKING.md).
+
+## License
+
+[MIT](./LICENSE) © 2026 Markus Jylhänkangas.

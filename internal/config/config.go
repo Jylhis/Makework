@@ -257,9 +257,8 @@ func applySet(c *Config, key, value string) error {
 		}
 		c.BareRoot = v
 	case "scan_roots":
-		parts := strings.Split(value, ",")
 		var roots []string
-		for _, p := range parts {
+		for p := range strings.SplitSeq(value, ",") {
 			t := strings.TrimSpace(p)
 			if t == "" {
 				continue
@@ -280,7 +279,7 @@ func applySet(c *Config, key, value string) error {
 		c.SyncMaxDepth = &d
 	case "sync_exclude":
 		var excl []string
-		for _, p := range strings.Split(value, ",") {
+		for p := range strings.SplitSeq(value, ",") {
 			if t := strings.TrimSpace(p); t != "" {
 				excl = append(excl, t)
 			}

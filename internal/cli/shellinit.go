@@ -11,7 +11,7 @@ func newInitCmd() *cobra.Command {
 	return silenceSubcommand(&cobra.Command{
 		Use:       "init [shell]",
 		Short:     "Initialize makework or generate shell integration",
-		Long:      "Without arguments: create config, catalog, and state directories.\nWith a shell argument: output shell completions and visit-tracking hook.",
+		Long:      "Without arguments: create config, catalog, and state directories.\nWith a shell argument: output shell completions, the go wrapper, and visit-tracking hook.",
 		Args:      cobra.MaximumNArgs(1),
 		ValidArgs: []string{"zsh", "bash", "fish", "powershell"},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -51,9 +51,9 @@ func runShellInit(cmd *cobra.Command, shell string) error {
 	out := cmd.OutOrStdout()
 	root := cmd.Root()
 
-	// Output completions
-	if err := generateCompletionStdout(root, shell, out); err != nil {
-		return fmt.Errorf("generating completions for %s: %w", shell, err)
+	// Output completions and the navigation wrapper.
+	if err := generateShellIntegrationStdout(root, shell, out); err != nil {
+		return fmt.Errorf("generating shell integration for %s: %w", shell, err)
 	}
 
 	// Output visit-tracking hook

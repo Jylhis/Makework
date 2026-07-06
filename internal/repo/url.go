@@ -1,6 +1,9 @@
 package repo
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // ParsedURL is the structured form of a git remote URL, used to compute
 // worktree paths (host + path segments, sans trailing .git).
@@ -103,7 +106,7 @@ func parseSCP(rest string) (ParsedURL, bool) {
 
 func splitPathSegments(path string) []string {
 	var out []string
-	for _, s := range strings.Split(path, "/") {
+	for s := range strings.SplitSeq(path, "/") {
 		if s == "" {
 			continue
 		}
@@ -135,7 +138,8 @@ func splitPathSegments(path string) []string {
 
 // isSafeSegment reports whether s is safe to use as a single path component
 // when materializing a remote URL onto the local filesystem. It rejects
-// empty, "." and ".." segments and any segment that contains a path
+// empty, "." and ".." segments, control characters that could corrupt
+// line-oriented shell integration output, and any segment that contains a path
 // separator on either Unix (/) or Windows (\), or a colon (which is a
 // filename separator for NTFS alternate data streams).
 //
@@ -145,7 +149,7 @@ func isSafeSegment(s string) bool {
 	if s == "" || s == "." || s == ".." {
 		return false
 	}
-	return !strings.ContainsAny(s, `/\:`)
+	return !strings.ContainsAny(s, `/\:`) && !strings.ContainsFunc(s, unicode.IsControl)
 }
 
 // isSafeHost validates a hostname using the same rules as isSafeSegment.

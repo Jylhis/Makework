@@ -1,6 +1,10 @@
 default:
     @just --list --justfile {{justfile()}}
 
+# Enter the development shell (Go, golangci-lint, gopls, just, treefmt)
+dev:
+    devenv shell
+
 # Build the default package via flake
 build:
     nix build

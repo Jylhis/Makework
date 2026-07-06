@@ -9,13 +9,15 @@
 //     forward merge or rebase).
 //  3. StateNoChanges  — three-dot diff (default...branch) is empty;
 //     branch has commits but no net tree change since the merge-base.
-//  4. StateMergedPID  — every commit unique to branch has a matching
-//     git patch-id on default (squash- / cherry-pick-merge case).
+//  4. StateMergedPID  — every commit unique to branch has an exact
+//     patch-text match on default (squash- / cherry-pick-merge case).
 //  5. StateDiverged   — none of the above; keeping the branch.
 package integration
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"io"
 	"os/exec"
 	"strings"
 
@@ -37,11 +39,14 @@ const (
 // Check returns the integration State of branch relative to
 // defaultBranch in the repo at repoPath. Both refs must resolve.
 func Check(repoPath, branch, defaultBranch string) (State, error) {
-	branchSHA, err := repo.RunGitCapture("-C", repoPath, "rev-parse", branch)
+	branchRef := headRef(branch)
+	defaultRef := headRef(defaultBranch)
+
+	branchSHA, err := repo.RunGitCapture("-C", repoPath, "rev-parse", branchRef)
 	if err != nil {
 		return StateUnknown, err
 	}
-	defaultSHA, err := repo.RunGitCapture("-C", repoPath, "rev-parse", defaultBranch)
+	defaultSHA, err := repo.RunGitCapture("-C", repoPath, "rev-parse", defaultRef)
 	if err != nil {
 		return StateUnknown, err
 	}
@@ -49,7 +54,7 @@ func Check(repoPath, branch, defaultBranch string) (State, error) {
 		return StateSameCommit, nil
 	}
 
-	ok, err := repo.IsAncestor(repoPath, branch, defaultBranch)
+	ok, err := repo.IsAncestor(repoPath, branchRef, defaultRef)
 	if err != nil {
 		return StateUnknown, err
 	}
@@ -57,7 +62,7 @@ func Check(repoPath, branch, defaultBranch string) (State, error) {
 		return StateAncestor, nil
 	}
 
-	empty, err := diffEmpty(repoPath, defaultBranch, branch)
+	empty, err := diffEmpty(repoPath, defaultRef, branchRef)
 	if err != nil {
 		return StateUnknown, err
 	}
@@ -65,7 +70,7 @@ func Check(repoPath, branch, defaultBranch string) (State, error) {
 		return StateNoChanges, nil
 	}
 
-	merged, err := patchIDsMerged(repoPath, branch, defaultBranch)
+	merged, err := exactPatchesMerged(repoPath, branchRef, defaultRef)
 	if err != nil {
 		return StateUnknown, err
 	}
@@ -74,6 +79,13 @@ func Check(repoPath, branch, defaultBranch string) (State, error) {
 	}
 
 	return StateDiverged, nil
+}
+
+func headRef(name string) string {
+	if strings.HasPrefix(name, "refs/heads/") {
+		return name
+	}
+	return "refs/heads/" + name
 }
 
 // diffEmpty reports whether `git diff --quiet <a>...<b>` exits zero,
@@ -90,63 +102,92 @@ func diffEmpty(repoPath, a, b string) (bool, error) {
 	return false, err
 }
 
-// patchIDsMerged reports whether every commit unique to branch has a
-// matching patch-id on defaultBranch.
-func patchIDsMerged(repoPath, branch, defaultBranch string) (bool, error) {
-	branchIDs, err := patchIDs(repoPath, defaultBranch+".."+branch)
+// exactPatchesMerged reports whether every commit unique to branch has
+// an exact patch-text match on defaultBranch.
+func exactPatchesMerged(repoPath, branch, defaultBranch string) (bool, error) {
+	branchPatches, err := patchSignatures(repoPath, defaultBranch+".."+branch)
 	if err != nil {
 		return false, err
 	}
-	if len(branchIDs) == 0 {
+	if len(branchPatches) == 0 {
 		return false, nil
 	}
-	defaultIDs, err := patchIDs(repoPath, branch+".."+defaultBranch)
+	defaultPatches, err := patchSignatures(repoPath, branch+".."+defaultBranch)
 	if err != nil {
 		return false, err
 	}
-	have := make(map[string]struct{}, len(defaultIDs))
-	for _, id := range defaultIDs {
-		have[id] = struct{}{}
+	have := make(map[patchSignature]struct{}, len(defaultPatches))
+	for _, sig := range defaultPatches {
+		have[sig] = struct{}{}
 	}
-	for _, id := range branchIDs {
-		if _, ok := have[id]; !ok {
+	for _, sig := range branchPatches {
+		if _, ok := have[sig]; !ok {
 			return false, nil
 		}
 	}
 	return true, nil
 }
 
-// patchIDs returns the patch-id of every commit in revRange, in log
-// order. Each git patch-id output line is "<patch-id> <commit-sha>".
-func patchIDs(repoPath, revRange string) ([]string, error) {
-	logCmd := exec.Command("git", "-C", repoPath, "log", "--reverse", "-p", revRange)
-	pidCmd := exec.Command("git", "-C", repoPath, "patch-id")
+// patchSignature is a fixed-size digest of a commit patch. The digest keeps
+// exact patch matching whitespace-sensitive without retaining attacker-controlled
+// patch bodies in memory.
+type patchSignature [sha256.Size]byte
 
-	pipe, err := logCmd.StdoutPipe()
+// patchSignatures returns whitespace-sensitive patch digests for commits in
+// revRange, in log order.
+func patchSignatures(repoPath, revRange string) ([]patchSignature, error) {
+	commitList, err := repo.RunGitCapture("-C", repoPath, "rev-list", "--reverse", revRange)
 	if err != nil {
 		return nil, err
 	}
-	pidCmd.Stdin = pipe
-	var out bytes.Buffer
-	pidCmd.Stdout = &out
-
-	if err := pidCmd.Start(); err != nil {
-		return nil, err
-	}
-	if err := logCmd.Run(); err != nil {
-		_ = pidCmd.Wait()
-		return nil, err
-	}
-	if err := pidCmd.Wait(); err != nil {
-		return nil, err
+	commits := strings.Fields(commitList)
+	if len(commits) == 0 {
+		return nil, nil
 	}
 
-	var ids []string
-	for _, line := range strings.Split(out.String(), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) > 0 {
-			ids = append(ids, fields[0])
+	sigs := make([]patchSignature, 0, len(commits))
+	for _, sha := range commits {
+		sig, err := patchDigest(repoPath, sha)
+		if err != nil {
+			return nil, err
+		}
+		sigs = append(sigs, sig)
+	}
+	return sigs, nil
+}
+
+func patchDigest(repoPath, sha string) (patchSignature, error) {
+	cmdArgs := []string{"-C", repoPath, "show", "--pretty=format:", "--no-ext-diff", sha}
+	cmd := exec.Command("git", cmdArgs...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return patchSignature{}, err
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		return patchSignature{}, err
+	}
+
+	h := sha256.New()
+	_, copyErr := io.Copy(h, stdout)
+	if copyErr != nil {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+		return patchSignature{}, copyErr
+	}
+	waitErr := cmd.Wait()
+	if waitErr != nil {
+		return patchSignature{}, &repo.GitError{
+			Cmd:    "git " + strings.Join(cmdArgs, " "),
+			Stderr: strings.TrimSpace(stderr.String()),
 		}
 	}
-	return ids, nil
+
+	var sig patchSignature
+	copy(sig[:], h.Sum(nil))
+	return sig, nil
 }

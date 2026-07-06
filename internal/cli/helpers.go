@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/config"
@@ -134,6 +135,84 @@ func editFile(path string) error {
 		return fmt.Errorf("editor exited with non-zero status: %w", err)
 	}
 	return nil
+}
+
+// currentRepo resolves the catalog repository that owns the current
+// working directory by asking git for the common git-dir and matching
+// it against cat.Repos. Returns the resolved project, the current
+// branch (or "" if detached/empty), and an error.
+//
+// Used by `mw wt` subcommands which are scoped to the current repo
+// (worktrunk-style), in contrast with the catalog-wide
+// `mw switch / rm / ls`.
+func currentRepo(cat *catalog.Catalog) (*catalog.ResolvedProject, string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, "", fmt.Errorf("getting working directory: %w", err)
+	}
+	topLevel, err := repo.RunGitCapture("-C", cwd, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return nil, "", fmt.Errorf("not inside a git worktree: %w", err)
+	}
+	topLevelClean := canonicalPath(topLevel)
+	common, err := repo.RunGitCapture("-C", cwd, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return nil, "", fmt.Errorf("not inside a git worktree: %w", err)
+	}
+	commonAbs := common
+	if !filepath.IsAbs(commonAbs) {
+		commonAbs = filepath.Join(cwd, common)
+	}
+	commonClean := canonicalPath(commonAbs)
+
+	for name, r := range cat.Repos {
+		barePath := canonicalPath(r.Path)
+		if barePath == commonClean || barePath == filepath.Clean(commonAbs) {
+			if !isRegisteredWorktree(r.Path, topLevelClean) {
+				return nil, "", fmt.Errorf("current directory is not a registered worktree for catalog repo %q", r.Name)
+			}
+			resolved := &catalog.ResolvedProject{Repo: r}
+			branch, _ := repo.RunGitCapture("-C", cwd, "symbolic-ref", "--short", "HEAD")
+			return resolved, branch, nil
+		}
+		// Some catalogs record the repo path; the git common-dir may
+		// point at the same directory's `.git` for a non-bare repo.
+		if barePath == filepath.Dir(commonClean) {
+			if !isRegisteredWorktree(r.Path, topLevelClean) {
+				return nil, "", fmt.Errorf("current directory is not a registered worktree for catalog repo %q", r.Name)
+			}
+			resolved := &catalog.ResolvedProject{Repo: r}
+			branch, _ := repo.RunGitCapture("-C", cwd, "symbolic-ref", "--short", "HEAD")
+			return resolved, branch, nil
+		}
+		_ = name
+	}
+	return nil, "", catalog.ErrRepoNotFound{Name: commonClean}
+}
+
+func isRegisteredWorktree(repoPath, topLevel string) bool {
+	out, err := repo.RunGitCapture("-C", repoPath, "worktree", "list", "--porcelain")
+	if err != nil {
+		return false
+	}
+	for line := range strings.SplitSeq(out, "\n") {
+		if !strings.HasPrefix(line, "worktree ") {
+			continue
+		}
+		wt := strings.TrimSpace(strings.TrimPrefix(line, "worktree "))
+		if canonicalPath(wt) == topLevel {
+			return true
+		}
+	}
+	return false
+}
+
+func canonicalPath(p string) string {
+	clean := filepath.Clean(p)
+	if resolved, err := filepath.EvalSymlinks(clean); err == nil {
+		return filepath.Clean(resolved)
+	}
+	return clean
 }
 
 func resolvedWorktreePath(cfg *config.Config, resolved *catalog.ResolvedProject, ref string) string {
