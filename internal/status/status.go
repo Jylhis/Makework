@@ -3,11 +3,11 @@ package status
 
 import (
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 
 	"github.com/jylhis/makework/internal/integration"
+	"github.com/jylhis/makework/internal/repo"
 )
 
 // WorktreeStatus holds the computed state of one worktree.
@@ -60,7 +60,7 @@ func GetLite(wtPath string) LiteWorktreeStatus {
 	if branch == "" {
 		branch = "unknown"
 	}
-	ahead, behind := aheadBehind(wtPath)
+	ahead, behind := revListAheadBehind(wtPath, "@{upstream}")
 
 	return LiteWorktreeStatus{
 		Path:       wtPath,
@@ -85,7 +85,7 @@ func GetFull(wtPath, barePath, defaultBranch string) WorktreeStatus {
 	}
 
 	dirty, mod, untr, conf := porcelainCounts(gitOutput(wtPath, "status", "--porcelain"))
-	ahead, behind := aheadBehind(wtPath)
+	ahead, behind := revListAheadBehind(wtPath, "@{upstream}")
 	lastTs := commitTimestamp(wtPath)
 
 	s := WorktreeStatus{
@@ -102,7 +102,7 @@ func GetFull(wtPath, barePath, defaultBranch string) WorktreeStatus {
 	}
 
 	if barePath != "" && defaultBranch != "" && branch != "unknown" && !isOrphaned {
-		s.MainAhead, s.MainBehind = mainAheadBehind(wtPath, defaultBranch)
+		s.MainAhead, s.MainBehind = revListAheadBehind(wtPath, defaultBranch)
 		if state, err := integration.Check(barePath, branch, defaultBranch); err == nil {
 			s.Integration = state
 		}
@@ -112,11 +112,11 @@ func GetFull(wtPath, barePath, defaultBranch string) WorktreeStatus {
 
 func gitOutput(dir string, args ...string) string {
 	full := append([]string{"-C", dir}, args...)
-	out, err := exec.Command("git", full...).Output()
+	out, err := repo.RunGitCapture(full...)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimSpace(out)
 }
 
 // porcelainCounts parses `git status --porcelain` output, returning the
@@ -144,19 +144,6 @@ func porcelainCounts(s string) (dirty uint32, modified, untracked, conflicts boo
 	return
 }
 
-// mainAheadBehind counts commits ahead/behind the default branch.
-func mainAheadBehind(wtPath, defaultBranch string) (uint32, uint32) {
-	out := gitOutput(wtPath, "rev-list", "--left-right", "--count",
-		"HEAD..."+defaultBranch)
-	parts := strings.Split(strings.TrimSpace(out), "\t")
-	if len(parts) != 2 {
-		return 0, 0
-	}
-	a, _ := strconv.ParseUint(parts[0], 10, 32)
-	b, _ := strconv.ParseUint(parts[1], 10, 32)
-	return uint32(a), uint32(b)
-}
-
 // commitTimestamp returns the unix timestamp of HEAD's commit.
 func commitTimestamp(wtPath string) int64 {
 	out := gitOutput(wtPath, "log", "-1", "--format=%ct")
@@ -164,8 +151,10 @@ func commitTimestamp(wtPath string) int64 {
 	return ts
 }
 
-func aheadBehind(dir string) (uint32, uint32) {
-	out := gitOutput(dir, "rev-list", "--left-right", "--count", "HEAD...@{upstream}")
+// revListAheadBehind counts commits ahead/behind ref via
+// `rev-list --left-right --count HEAD...<ref>`.
+func revListAheadBehind(dir, ref string) (uint32, uint32) {
+	out := gitOutput(dir, "rev-list", "--left-right", "--count", "HEAD..."+ref)
 	parts := strings.Split(strings.TrimSpace(out), "\t")
 	if len(parts) != 2 {
 		return 0, 0
