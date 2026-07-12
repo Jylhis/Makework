@@ -71,7 +71,7 @@ func TestAllProjectNamesIncludesSubprojects(t *testing.T) {
 	}
 }
 
-func TestFindProject(t *testing.T) {
+func TestFindProjectByName(t *testing.T) {
 	sub := project.Subproject{Name: "api", SubprojectPath: "services/api"}
 	proj := project.Project{
 		Name:        "myproject",
@@ -82,23 +82,23 @@ func TestFindProject(t *testing.T) {
 	cat := &Catalog{Repos: map[string]*repo.Repository{"myrepo": r}}
 
 	// by repo
-	rr, sp, ok := cat.FindProject("myrepo")
-	if !ok || rr.Name != "myrepo" || sp != "" {
-		t.Error("repo lookup failed")
+	rp, err := cat.FindProjectUnambiguous("myrepo")
+	if err != nil || rp.Repo.Name != "myrepo" || rp.SubprojectPath != "" {
+		t.Errorf("repo lookup failed: %+v err=%v", rp, err)
 	}
 	// by project
-	rr, sp, ok = cat.FindProject("myproject")
-	if !ok || rr.Name != "myrepo" || sp != "" {
-		t.Error("project lookup failed")
+	rp, err = cat.FindProjectUnambiguous("myproject")
+	if err != nil || rp.Repo.Name != "myrepo" || rp.SubprojectPath != "" {
+		t.Errorf("project lookup failed: %+v err=%v", rp, err)
 	}
 	// by subproject
-	rr, sp, ok = cat.FindProject("api")
-	if !ok || rr.Name != "myrepo" || sp != "services/api" {
-		t.Error("subproject lookup failed")
+	rp, err = cat.FindProjectUnambiguous("api")
+	if err != nil || rp.Repo.Name != "myrepo" || rp.SubprojectPath != "services/api" {
+		t.Errorf("subproject lookup failed: %+v err=%v", rp, err)
 	}
 	// not found
-	_, _, ok = cat.FindProject("nope")
-	if ok {
+	_, err = cat.FindProjectUnambiguous("nope")
+	if err == nil {
 		t.Error("expected not found")
 	}
 }

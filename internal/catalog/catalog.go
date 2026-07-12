@@ -251,8 +251,7 @@ func (c *Catalog) validateUniqueSubprojects() error {
 	for repoName, r := range c.Repos {
 		for _, proj := range r.Projects {
 			for subName := range proj.Subprojects {
-				if prevRepo, exists := seen[subName]; exists {
-					_ = prevRepo
+				if _, exists := seen[subName]; exists {
 					return ErrDuplicateSubproject{Name: subName, Repo: repoName}
 				}
 				seen[subName] = repoName
@@ -282,27 +281,6 @@ func (c *Catalog) AllProjectNames() []string {
 	}
 	slices.Sort(names)
 	return names
-}
-
-// FindProject resolves a name through repo → project → subproject. Returns the
-// repo and optional subproject path.
-func (c *Catalog) FindProject(name string) (*repo.Repository, string, bool) {
-	if r, ok := c.Repos[name]; ok {
-		return r, "", true
-	}
-	for _, r := range c.Repos {
-		if _, ok := r.Projects[name]; ok {
-			return r, "", true
-		}
-	}
-	for _, r := range c.Repos {
-		for _, proj := range r.Projects {
-			if sub, ok := proj.Subprojects[name]; ok {
-				return r, sub.SubprojectPath, true
-			}
-		}
-	}
-	return nil, "", false
 }
 
 // FindProjectUnambiguous resolves a name, failing on ambiguity.
