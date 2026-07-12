@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -216,11 +215,11 @@ func barePath(cfg *config.Config, repoName string, hasParsed bool, parsed *repo.
 }
 
 func getOriginURL(dir string) string {
-	out, err := exec.Command("git", "-C", dir, "remote", "get-url", "origin").Output()
+	out, err := repo.RunGitCapture("-C", dir, "remote", "get-url", "origin")
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimSpace(out)
 }
 
 // IsContainedPath reports whether path resolves to a location inside root
@@ -341,8 +340,6 @@ func isGitRepo(path string) bool {
 	if fi, err := os.Stat(path); err != nil || !fi.IsDir() {
 		return false
 	}
-	cmd := exec.Command("git", "-C", path, "rev-parse", "--git-dir")
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	return cmd.Run() == nil
+	_, err := repo.RunGitCapture("-C", path, "rev-parse", "--git-dir")
+	return err == nil
 }
