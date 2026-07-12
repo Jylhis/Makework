@@ -27,7 +27,6 @@ type Target struct {
 	Branch       string
 	ProjectName  string
 	Score        float64
-	MatchReason  MatchReason
 	SignalScores SignalScores
 }
 
@@ -37,16 +36,6 @@ type SignalScores struct {
 	Activity float64
 	Context  float64
 }
-
-type MatchReason int
-
-const (
-	MatchExactName MatchReason = iota
-	MatchFuzzyName
-	MatchBranchMatch
-	MatchRecentActivity
-	MatchFrecency
-)
 
 type CatalogTarget struct {
 	RepoName    string
@@ -158,7 +147,7 @@ func FuzzyScore(query, targetName string) float64 {
 	return math.Min(raw, 0.95)
 }
 
-func scoreTarget(t *CatalogTarget, query string, visits *VisitsDB, cfg *config.ResolverConfig, ctx *ResolveContext) (float64, MatchReason, SignalScores) {
+func scoreTarget(t *CatalogTarget, query string, visits *VisitsDB, cfg *config.ResolverConfig, ctx *ResolveContext) (float64, SignalScores) {
 	bestFuzzy := FuzzyScore(query, t.RepoName)
 	if t.ProjectName != "" {
 		if s := FuzzyScore(query, t.ProjectName); s > bestFuzzy {
@@ -201,17 +190,7 @@ func scoreTarget(t *CatalogTarget, query string, visits *VisitsDB, cfg *config.R
 		activity*cfg.WeightActivity +
 		contextScore*cfg.WeightContext
 
-	reason := MatchFuzzyName
-	best := bestFuzzy * cfg.WeightFuzzy
-	if fW := frecency * cfg.WeightFrecency; fW > best {
-		best = fW
-		reason = MatchFrecency
-	}
-	if aW := activity * cfg.WeightActivity; aW > best {
-		reason = MatchRecentActivity
-	}
-
-	return total, reason, signals
+	return total, signals
 }
 
 // --- Main resolve ---
@@ -227,7 +206,7 @@ func Resolve(query string, index *Index, cfg *config.ResolverConfig, ctx *Resolv
 	var results []Target
 	for i := range index.Targets {
 		t := &index.Targets[i]
-		score, reason, signals := scoreTarget(t, query, &index.Visits, cfg, ctx)
+		score, signals := scoreTarget(t, query, &index.Visits, cfg, ctx)
 		if score <= 0 {
 			continue
 		}
@@ -237,7 +216,6 @@ func Resolve(query string, index *Index, cfg *config.ResolverConfig, ctx *Resolv
 			Branch:       t.Branch,
 			ProjectName:  t.ProjectName,
 			Score:        score,
-			MatchReason:  reason,
 			SignalScores: signals,
 		})
 	}
@@ -251,6 +229,11 @@ func Resolve(query string, index *Index, cfg *config.ResolverConfig, ctx *Resolv
 	}
 	return results, nil
 }
+
+// DefaultDisambiguationThreshold is the relative gap below which the top
+// two results are considered too close to auto-pick, prompting the user to
+// disambiguate. Expressed as a fraction of the top score.
+const DefaultDisambiguationThreshold = 0.10
 
 func NeedsDisambiguation(results []Target, threshold float64) bool {
 	if len(results) < 2 {
