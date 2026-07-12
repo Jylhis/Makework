@@ -12,19 +12,6 @@ type ParsedURL struct {
 	Segments []string
 }
 
-// Equal reports whether two ParsedURLs are equivalent.
-func (p ParsedURL) Equal(other ParsedURL) bool {
-	if p.Host != other.Host || len(p.Segments) != len(other.Segments) {
-		return false
-	}
-	for i, s := range p.Segments {
-		if s != other.Segments[i] {
-			return false
-		}
-	}
-	return true
-}
-
 // ParseRemoteURL parses the common git remote URL formats (https, http, ssh,
 // scp-style git@host:path) and returns the host plus path segments with any
 // trailing ".git" stripped. Returns false for unrecognized or malformed input.
@@ -49,21 +36,10 @@ func ParseRemoteURL(url string) (ParsedURL, bool) {
 
 func parseHTTPLike(rest string) (ParsedURL, bool) {
 	hostPort, path, ok := cut(rest, "/")
-	if !ok || hostPort == "" || path == "" {
+	if !ok {
 		return ParsedURL{}, false
 	}
-	host := hostPort
-	if i := strings.Index(hostPort, ":"); i >= 0 {
-		host = hostPort[:i]
-	}
-	if !isSafeHost(host) {
-		return ParsedURL{}, false
-	}
-	segs := splitPathSegments(path)
-	if len(segs) == 0 {
-		return ParsedURL{}, false
-	}
-	return ParsedURL{Host: host, Segments: segs}, true
+	return parseHostPath(hostPort, path)
 }
 
 func parseSSH(rest string) (ParsedURL, bool) {
@@ -72,27 +48,30 @@ func parseSSH(rest string) (ParsedURL, bool) {
 		rest = rest[i+1:]
 	}
 	hostPort, path, ok := cut(rest, "/")
-	if !ok || hostPort == "" || path == "" {
+	if !ok {
+		return ParsedURL{}, false
+	}
+	return parseHostPath(hostPort, path)
+}
+
+func parseSCP(rest string) (ParsedURL, bool) {
+	hostPort, path, ok := cut(rest, ":")
+	if !ok {
+		return ParsedURL{}, false
+	}
+	return parseHostPath(hostPort, path)
+}
+
+// parseHostPath validates a "host[:port]" and path pair (already split out by
+// the format-specific parsers) into a ParsedURL. The port, if present, is
+// dropped from the host.
+func parseHostPath(hostPort, path string) (ParsedURL, bool) {
+	if hostPort == "" || path == "" {
 		return ParsedURL{}, false
 	}
 	host := hostPort
 	if i := strings.Index(hostPort, ":"); i >= 0 {
 		host = hostPort[:i]
-	}
-	if !isSafeHost(host) {
-		return ParsedURL{}, false
-	}
-	segs := splitPathSegments(path)
-	if host == "" || len(segs) == 0 {
-		return ParsedURL{}, false
-	}
-	return ParsedURL{Host: host, Segments: segs}, true
-}
-
-func parseSCP(rest string) (ParsedURL, bool) {
-	host, path, ok := cut(rest, ":")
-	if !ok || host == "" || path == "" {
-		return ParsedURL{}, false
 	}
 	if !isSafeHost(host) {
 		return ParsedURL{}, false
@@ -120,20 +99,14 @@ func splitPathSegments(path string) []string {
 	}
 	last := out[len(out)-1]
 	if stripped := strings.TrimSuffix(last, ".git"); stripped != last {
-		out[len(out)-1] = stripped
-	}
-	// Re-filter in case the strip left an empty segment (".git" alone).
-	filtered := out[:0]
-	for _, s := range out {
-		if s == "" {
-			continue
-		}
-		if !isSafeSegment(s) {
+		// Stripping ".git" can leave an unsafe segment (e.g. ".git" alone
+		// becomes "", or "..git" becomes "."), so re-validate just it.
+		if !isSafeSegment(stripped) {
 			return nil
 		}
-		filtered = append(filtered, s)
+		out[len(out)-1] = stripped
 	}
-	return filtered
+	return out
 }
 
 // isSafeSegment reports whether s is safe to use as a single path component

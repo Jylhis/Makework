@@ -64,11 +64,11 @@ func TestParseRemoteURLRejects(t *testing.T) {
 func TestParsedURLEqual(t *testing.T) {
 	a := ParsedURL{Host: "github.com", Segments: []string{"u", "r"}}
 	b := ParsedURL{Host: "github.com", Segments: []string{"u", "r"}}
-	if !a.Equal(b) {
+	if !reflect.DeepEqual(a, b) {
 		t.Error("equal URLs should compare equal")
 	}
 	c := ParsedURL{Host: "gitlab.com", Segments: []string{"u", "r"}}
-	if a.Equal(c) {
+	if reflect.DeepEqual(a, c) {
 		t.Error("different host should not be equal")
 	}
 }
