@@ -75,12 +75,6 @@ func EnableSparseCheckout(wtPath string, paths []string) error {
 	return err
 }
 
-// DisableSparseCheckout restores the full checkout.
-func DisableSparseCheckout(wtPath string) error {
-	_, err := repo.RunGitCapture("-C", wtPath, "sparse-checkout", "disable")
-	return err
-}
-
 // Prune prunes stale worktree entries whose directories no longer exist.
 // Returns the number of orphaned entries that were pruned.
 func Prune(barePath string) (int, error) {
