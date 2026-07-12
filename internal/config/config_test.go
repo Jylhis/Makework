@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -55,32 +56,69 @@ func TestRoundTripTOML(t *testing.T) {
 	}
 }
 
-func TestShowBaseKeys(t *testing.T) {
+// Show lists every settable key so `config show` mirrors `config set`.
+var settableKeys = []string{
+	"worktree_root", "bare_root", "scan_roots", "sync_max_depth",
+	"sync_exclude", "template_dir", "allow_hooks",
+}
+
+func TestShowListsAllSettableKeys(t *testing.T) {
 	c := &Config{WorktreeRoot: "/d/w", BareRoot: "/d/r"}
 	entries, err := c.Show()
 	if err != nil {
 		t.Fatalf("Show: %v", err)
 	}
-	if len(entries) != 2 {
-		t.Errorf("want 2 entries, got %d", len(entries))
+	if len(entries) != len(settableKeys) {
+		t.Fatalf("want %d entries, got %d", len(settableKeys), len(entries))
 	}
-	if entries[0].Key != "worktree_root" || entries[0].Value != "/d/w" {
-		t.Errorf("entry[0] = %+v", entries[0])
+	for i, key := range settableKeys {
+		if entries[i].Key != key {
+			t.Errorf("entry[%d].Key = %q, want %q", i, entries[i].Key, key)
+		}
+	}
+	if entries[0].Value != "/d/w" {
+		t.Errorf("worktree_root value = %q", entries[0].Value)
+	}
+	// Unset optional keys render as empty / zero values.
+	if got := entries[2].Value; got != "" {
+		t.Errorf("scan_roots value = %q, want empty", got)
+	}
+	if got := entries[6].Value; got != "false" {
+		t.Errorf("allow_hooks value = %q, want false", got)
 	}
 }
 
-func TestShowIncludesScanRoots(t *testing.T) {
+func TestShowRendersSetValues(t *testing.T) {
+	depth := uint32(4)
+	tpl := "/home/u/tpl"
 	c := &Config{
 		WorktreeRoot: "/d/w",
 		BareRoot:     "/d/r",
-		ScanRoots:    []string{"/home/u/projects"},
+		ScanRoots:    []string{"/home/u/projects", "/home/u/work"},
+		SyncMaxDepth: &depth,
+		SyncExclude:  []string{"node_modules"},
+		TemplateDir:  &tpl,
+		AllowHooks:   true,
 	}
 	entries, err := c.Show()
 	if err != nil {
 		t.Fatalf("Show: %v", err)
 	}
-	if len(entries) != 3 {
-		t.Errorf("want 3 entries, got %d", len(entries))
+	byKey := make(map[string]string, len(entries))
+	for _, e := range entries {
+		byKey[e.Key] = e.Value
+	}
+	want := map[string]string{
+		"scan_roots":     "/home/u/projects, /home/u/work",
+		"sync_max_depth": "4",
+		"sync_exclude":   "node_modules",
+		"template_dir":   "/home/u/tpl",
+		"allow_hooks":    "true",
+	}
+	for k, v := range want {
+		if byKey[k] != v {
+			t.Errorf("%s = %q, want %q", k, byKey[k], v)
+		}
 	}
 }
 
@@ -122,6 +160,42 @@ func TestApplySetDepth(t *testing.T) {
 	}
 	if err := applySet(c, "sync_max_depth", "not-a-number"); err == nil {
 		t.Error("expected parse error")
+	}
+}
+
+func TestSavePreservesExistingMode(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+
+	path, err := Path()
+	if err != nil {
+		t.Fatalf("Path: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("[config]\n"), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	cfg := &Config{WorktreeRoot: "/d/w", BareRoot: "/d/r"}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat: %v", err)
+	}
+	if got := st.Mode().Perm(); got != 0o600 {
+		t.Fatalf("config mode = %o, want %o", got, 0o600)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load after Save: %v", err)
+	}
+	if loaded.WorktreeRoot != "/d/w" || loaded.BareRoot != "/d/r" {
+		t.Fatalf("round-trip mismatch: %+v", loaded)
 	}
 }
 
@@ -217,9 +291,8 @@ func TestValidateResolverNilIsOK(t *testing.T) {
 	}
 }
 
-func TestResolverApplyDefaults(t *testing.T) {
-	r := ResolverConfig{}
-	r.ApplyDefaults()
+func TestDefaultResolverWeights(t *testing.T) {
+	r := DefaultResolver()
 	if r.WeightFuzzy != DefaultWeightFuzzy {
 		t.Errorf("fuzzy = %v", r.WeightFuzzy)
 	}

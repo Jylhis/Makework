@@ -23,7 +23,7 @@ const (
 )
 
 // ResolverConfig holds resolver scoring weights. Zero-valued struct is NOT
-// equivalent to defaults; use (*ResolverConfig).ApplyDefaults.
+// equivalent to defaults; use DefaultResolver for the default weights.
 type ResolverConfig struct {
 	WeightFuzzy    float64 `toml:"weight_fuzzy"`
 	WeightFrecency float64 `toml:"weight_frecency"`
@@ -38,22 +38,6 @@ func DefaultResolver() ResolverConfig {
 		WeightFrecency: DefaultWeightFrecency,
 		WeightActivity: DefaultWeightActivity,
 		WeightContext:  DefaultWeightContext,
-	}
-}
-
-// ApplyDefaults fills in any zero weight with its default.
-func (r *ResolverConfig) ApplyDefaults() {
-	if r.WeightFuzzy == 0 {
-		r.WeightFuzzy = DefaultWeightFuzzy
-	}
-	if r.WeightFrecency == 0 {
-		r.WeightFrecency = DefaultWeightFrecency
-	}
-	if r.WeightActivity == 0 {
-		r.WeightActivity = DefaultWeightActivity
-	}
-	if r.WeightContext == 0 {
-		r.WeightContext = DefaultWeightContext
 	}
 }
 
@@ -195,7 +179,40 @@ func (c *Config) Save() error {
 	if err := enc.Encode(configFile{Config: *c}); err != nil {
 		return err
 	}
-	return os.WriteFile(path, buf.Bytes(), 0o644)
+
+	// Preserve the existing file mode when replacing an existing config.
+	mode := os.FileMode(0o644)
+	if st, err := os.Stat(path); err == nil {
+		mode = st.Mode().Perm()
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	// Write to a temp file in the same dir, then atomically rename over path.
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".config.*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := func() { _ = os.Remove(tmpName) }
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Chmod(tmpName, mode); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		cleanup()
+		return err
+	}
+	return nil
 }
 
 // ShowEntry is one row in the `mw config show` output.
@@ -215,12 +232,22 @@ func (c *Config) Show() ([]ShowEntry, error) {
 	if _, err := os.Stat(path); err == nil {
 		source = "config-file"
 	}
+	syncMaxDepth := ""
+	if c.SyncMaxDepth != nil {
+		syncMaxDepth = strconv.FormatUint(uint64(*c.SyncMaxDepth), 10)
+	}
+	templateDir := ""
+	if c.TemplateDir != nil {
+		templateDir = *c.TemplateDir
+	}
 	entries := []ShowEntry{
 		{"worktree_root", c.WorktreeRoot, source},
 		{"bare_root", c.BareRoot, source},
-	}
-	if len(c.ScanRoots) > 0 {
-		entries = append(entries, ShowEntry{"scan_roots", strings.Join(c.ScanRoots, ", "), source})
+		{"scan_roots", strings.Join(c.ScanRoots, ", "), source},
+		{"sync_max_depth", syncMaxDepth, source},
+		{"sync_exclude", strings.Join(c.SyncExclude, ", "), source},
+		{"template_dir", templateDir, source},
+		{"allow_hooks", strconv.FormatBool(c.AllowHooks), source},
 	}
 	return entries, nil
 }
