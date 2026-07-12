@@ -16,7 +16,7 @@ var ErrNoHome = errors.New("could not determine home directory")
 
 // ConfigDir returns $XDG_CONFIG_HOME/makework (or platform default).
 func ConfigDir() (string, error) {
-	base, err := configHome()
+	base, err := xdgHome("XDG_CONFIG_HOME", []string{"Library", "Application Support"}, []string{".config"})
 	if err != nil {
 		return "", err
 	}
@@ -25,7 +25,7 @@ func ConfigDir() (string, error) {
 
 // StateDir returns $XDG_STATE_HOME/makework (or platform default).
 func StateDir() (string, error) {
-	base, err := stateHome()
+	base, err := xdgHome("XDG_STATE_HOME", []string{".local", "state"}, []string{".local", "state"})
 	if err != nil {
 		return "", err
 	}
@@ -34,7 +34,7 @@ func StateDir() (string, error) {
 
 // DataDir returns $XDG_DATA_HOME/makework (or platform default).
 func DataDir() (string, error) {
-	base, err := dataHome()
+	base, err := xdgHome("XDG_DATA_HOME", []string{"Library", "Application Support"}, []string{".local", "share"})
 	if err != nil {
 		return "", err
 	}
@@ -61,8 +61,12 @@ func ExpandTilde(path string) (string, error) {
 	return path, nil
 }
 
-func configHome() (string, error) {
-	if v := os.Getenv("XDG_CONFIG_HOME"); v != "" {
+// xdgHome resolves an XDG base directory: it returns the value of the named
+// environment variable if set, otherwise a home-relative default. darwinDefault
+// is used on macOS and otherDefault on all other platforms; each is a sequence
+// of path segments joined onto the home directory.
+func xdgHome(envVar string, darwinDefault, otherDefault []string) (string, error) {
+	if v := os.Getenv(envVar); v != "" {
 		return v, nil
 	}
 	home, err := os.UserHomeDir()
@@ -70,32 +74,7 @@ func configHome() (string, error) {
 		return "", ErrNoHome
 	}
 	if runtime.GOOS == "darwin" {
-		return filepath.Join(home, "Library", "Application Support"), nil
+		return filepath.Join(append([]string{home}, darwinDefault...)...), nil
 	}
-	return filepath.Join(home, ".config"), nil
-}
-
-func stateHome() (string, error) {
-	if v := os.Getenv("XDG_STATE_HOME"); v != "" {
-		return v, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", ErrNoHome
-	}
-	return filepath.Join(home, ".local", "state"), nil
-}
-
-func dataHome() (string, error) {
-	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
-		return v, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", ErrNoHome
-	}
-	if runtime.GOOS == "darwin" {
-		return filepath.Join(home, "Library", "Application Support"), nil
-	}
-	return filepath.Join(home, ".local", "share"), nil
+	return filepath.Join(append([]string{home}, otherDefault...)...), nil
 }
