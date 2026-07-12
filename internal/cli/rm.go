@@ -65,11 +65,15 @@ func newRmCmd() *cobra.Command {
 	return silenceSubcommand(cmd)
 }
 
-// deleteBranchAfterRemove deletes branch once its worktree is gone,
-// unless integration.Check classifies it as diverged and forceDelete is
-// not set. It reports the outcome to out and never returns an error: a
-// kept or undeletable branch is not a failure of the remove itself.
+// deleteBranchAfterRemove deletes branch once its worktree is gone. The
+// default branch is always kept, and a diverged branch is kept unless
+// forceDelete is set. It reports the outcome to out and never returns an
+// error: a kept or undeletable branch is not a failure of the remove itself.
 func deleteBranchAfterRemove(out io.Writer, repoPath, branch, defaultBranch string, forceDelete bool) {
+	if defaultBranch != "" && branch == defaultBranch {
+		fmt.Fprintf(out, "Branch %s kept (default branch)\n", branch)
+		return
+	}
 	state, err := integration.Check(repoPath, branch, defaultBranch)
 	if err != nil {
 		fmt.Fprintf(out, "Branch %s kept (integration check failed: %v)\n", branch, err)
