@@ -41,31 +41,7 @@ func newGoCmd() *cobra.Command {
 			errOut := cmd.ErrOrStderr()
 
 			if len(args) == 0 {
-				names := cat.AllProjectNames()
-				if len(names) == 0 {
-					return fmt.Errorf("no projects registered. Run 'mw repo sync' or 'mw repo add' first")
-				}
-				if !isTerminal() {
-					fmt.Fprintln(errOut, "Available projects:")
-					for _, n := range names {
-						fmt.Fprintf(errOut, "  %s\n", n)
-					}
-					fmt.Fprintln(errOut, "\nUsage: mw go <project>")
-					return fmt.Errorf("no project specified")
-				}
-				items := make([]picker.Item, len(names))
-				for i, n := range names {
-					items[i] = picker.Item{Label: n}
-				}
-				sel, err := picker.Pick(items, "Pick a project:", os.Stdin, errOut)
-				if err != nil {
-					return err
-				}
-				resolved, err := cat.FindProjectUnambiguous(sel.Label)
-				if err != nil {
-					return err
-				}
-				return navigateToWorktree(cfg, resolved, resolved.Repo.MainBranch, hooksEnabled, out)
+				return runInteractivePick(cfg, cat, hooksEnabled, out, errOut)
 			}
 
 			query := args[0]
@@ -80,11 +56,7 @@ func newGoCmd() *cobra.Command {
 			}
 
 			if parsed.IsExplicit() {
-				resolved, err := cat.FindProjectUnambiguous(parsed.Repo)
-				if err != nil {
-					return err
-				}
-				return navigateToWorktree(cfg, resolved, parsed.Branch, hooksEnabled, out)
+				return runExplicitRef(cfg, cat, parsed, hooksEnabled, out)
 			}
 
 			// Fast path: exact catalog match
@@ -98,99 +70,152 @@ func newGoCmd() *cobra.Command {
 				}
 			}
 
-			// Fuzzy resolve
-			resolverCfg := config.DefaultResolver()
-			if cfg.Resolver != nil {
-				resolverCfg = *cfg.Resolver
-			}
-			index := &resolver.Index{
-				Targets: resolver.BuildTargets(cat, &resolverCfg),
-				Visits:  loadVisits(),
-			}
-			ctx := resolver.DefaultContext()
-			results, err := resolver.Resolve(query, index, &resolverCfg, &ctx)
-			if err != nil {
-				return err
-			}
-
-			if list {
-				for i, t := range results {
-					if i >= 10 {
-						break
-					}
-					branch := t.Branch
-					if branch == "" {
-						branch = "-"
-					}
-					fmt.Fprintf(errOut, "  %d. %-20s %-15s %.3f  %s\n",
-						i+1, t.RepoName, branch, t.Score, t.ProjectName)
-				}
-				return nil
-			}
-
-			if resolver.NeedsDisambiguation(results, 0.10) && isTerminal() {
-				topN := results
-				if len(topN) > 5 {
-					topN = topN[:5]
-				}
-				items := make([]picker.Item, len(topN))
-				for i, t := range topN {
-					branch := t.Branch
-					if branch == "" {
-						branch = "-"
-					}
-					items[i] = picker.Item{
-						Label: fmt.Sprintf("%s@%s", t.RepoName, branch),
-						Sub:   fmt.Sprintf("score=%.3f", t.Score),
-						Value: t,
-					}
-				}
-				sel, err := picker.Pick(items, fmt.Sprintf("Multiple matches for '%s':", query), os.Stdin, errOut)
-				if err != nil {
-					return err
-				}
-				chosen := sel.Value.(resolver.Target)
-				name := chosen.RepoName
-				if chosen.ProjectName != "" {
-					name = chosen.ProjectName
-				}
-				resolved, err := cat.FindProjectUnambiguous(name)
-				if err != nil {
-					return err
-				}
-				ref := refOverride
-				if ref == "" {
-					ref = chosen.Branch
-					if ref == "" {
-						ref = "main"
-					}
-				}
-				return navigateToWorktree(cfg, resolved, ref, hooksEnabled, out)
-			}
-
-			top := results[0]
-			branch := refOverride
-			if branch == "" {
-				branch = top.Branch
-				if branch == "" {
-					branch = "main"
-				}
-			}
-			suggestName := top.RepoName
-			if top.ProjectName != "" {
-				suggestName = top.ProjectName
-			}
-			fmt.Fprintf(errOut,
-				"Refusing to auto-navigate on fuzzy match %q (top match: %s@%s, score %.3f).\n",
-				query, suggestName, branch, top.Score,
-			)
-			fmt.Fprintf(errOut, "Run mw go %s to confirm.\n", shellQuote(suggestName+"@"+branch))
-			return fmt.Errorf("confirmation required for fuzzy match")
+			return runFuzzyResolve(cfg, cat, query, refOverride, list, hooksEnabled, out, errOut)
 		},
 	}
 	cmd.Flags().BoolVar(&list, "list", false, "Show all matches with scores instead of navigating")
 	cmd.Flags().BoolVar(&allowHooks, "allow-hooks", false, "Run post-create hooks from .makework.toml (off by default; equivalent to config allow_hooks=true)")
 	return silenceSubcommand(cmd)
+}
+
+// runInteractivePick handles the no-argument case: it presents an interactive
+// picker of all registered projects and navigates to the chosen one. When
+// stdin is not a terminal it lists the available projects and returns an error.
+func runInteractivePick(cfg *config.Config, cat *catalog.Catalog, hooksEnabled bool, out, errOut io.Writer) error {
+	names := cat.AllProjectNames()
+	if len(names) == 0 {
+		return fmt.Errorf("no projects registered. Run 'mw repo sync' or 'mw repo add' first")
+	}
+	if !isTerminal() {
+		fmt.Fprintln(errOut, "Available projects:")
+		for _, n := range names {
+			fmt.Fprintf(errOut, "  %s\n", n)
+		}
+		fmt.Fprintln(errOut, "\nUsage: mw go <project>")
+		return fmt.Errorf("no project specified")
+	}
+	items := make([]picker.Item, len(names))
+	for i, n := range names {
+		items[i] = picker.Item{Label: n}
+	}
+	sel, err := picker.Pick(items, "Pick a project:", os.Stdin, errOut)
+	if err != nil {
+		return err
+	}
+	resolved, err := cat.FindProjectUnambiguous(sel.Label)
+	if err != nil {
+		return err
+	}
+	return navigateToWorktree(cfg, resolved, resolved.Repo.MainBranch, hooksEnabled, out)
+}
+
+// runExplicitRef handles an explicit `repo@ref` query, navigating directly to
+// the unambiguously resolved project at the parsed branch.
+func runExplicitRef(cfg *config.Config, cat *catalog.Catalog, parsed resolver.ParsedQuery, hooksEnabled bool, out io.Writer) error {
+	resolved, err := cat.FindProjectUnambiguous(parsed.Repo)
+	if err != nil {
+		return err
+	}
+	return navigateToWorktree(cfg, resolved, parsed.Branch, hooksEnabled, out)
+}
+
+// runFuzzyResolve performs weighted fuzzy resolution for query and dispatches
+// to the appropriate output: the `--list` listing, an interactive
+// disambiguation picker, or the "refuse to auto-navigate" confirmation prompt.
+func runFuzzyResolve(cfg *config.Config, cat *catalog.Catalog, query, refOverride string, list, hooksEnabled bool, out, errOut io.Writer) error {
+	resolverCfg := config.DefaultResolver()
+	if cfg.Resolver != nil {
+		resolverCfg = *cfg.Resolver
+	}
+	index := &resolver.Index{
+		Targets: resolver.BuildTargets(cat, &resolverCfg),
+		Visits:  loadVisits(),
+	}
+	ctx := resolver.DefaultContext()
+	results, err := resolver.Resolve(query, index, &resolverCfg, &ctx)
+	if err != nil {
+		return err
+	}
+
+	if list {
+		for i, t := range results {
+			if i >= 10 {
+				break
+			}
+			branch := t.Branch
+			if branch == "" {
+				branch = "-"
+			}
+			fmt.Fprintf(errOut, "  %d. %-20s %-15s %.3f  %s\n",
+				i+1, t.RepoName, branch, t.Score, t.ProjectName)
+		}
+		return nil
+	}
+
+	if resolver.NeedsDisambiguation(results, 0.10) && isTerminal() {
+		return runDisambiguationPick(cfg, cat, query, refOverride, results, hooksEnabled, out, errOut)
+	}
+
+	top := results[0]
+	branch := refOverride
+	if branch == "" {
+		branch = top.Branch
+		if branch == "" {
+			branch = "main"
+		}
+	}
+	suggestName := top.RepoName
+	if top.ProjectName != "" {
+		suggestName = top.ProjectName
+	}
+	fmt.Fprintf(errOut,
+		"Refusing to auto-navigate on fuzzy match %q (top match: %s@%s, score %.3f).\n",
+		query, suggestName, branch, top.Score,
+	)
+	fmt.Fprintf(errOut, "Run mw go %s to confirm.\n", shellQuote(suggestName+"@"+branch))
+	return fmt.Errorf("confirmation required for fuzzy match")
+}
+
+// runDisambiguationPick presents an interactive picker over the top fuzzy
+// results and navigates to the chosen target.
+func runDisambiguationPick(cfg *config.Config, cat *catalog.Catalog, query, refOverride string, results []resolver.Target, hooksEnabled bool, out, errOut io.Writer) error {
+	topN := results
+	if len(topN) > 5 {
+		topN = topN[:5]
+	}
+	items := make([]picker.Item, len(topN))
+	for i, t := range topN {
+		branch := t.Branch
+		if branch == "" {
+			branch = "-"
+		}
+		items[i] = picker.Item{
+			Label: fmt.Sprintf("%s@%s", t.RepoName, branch),
+			Sub:   fmt.Sprintf("score=%.3f", t.Score),
+			Value: t,
+		}
+	}
+	sel, err := picker.Pick(items, fmt.Sprintf("Multiple matches for '%s':", query), os.Stdin, errOut)
+	if err != nil {
+		return err
+	}
+	chosen := sel.Value.(resolver.Target)
+	name := chosen.RepoName
+	if chosen.ProjectName != "" {
+		name = chosen.ProjectName
+	}
+	resolved, err := cat.FindProjectUnambiguous(name)
+	if err != nil {
+		return err
+	}
+	ref := refOverride
+	if ref == "" {
+		ref = chosen.Branch
+		if ref == "" {
+			ref = "main"
+		}
+	}
+	return navigateToWorktree(cfg, resolved, ref, hooksEnabled, out)
 }
 
 func navigateToWorktree(cfg *config.Config, resolved *catalog.ResolvedProject, ref string, hooksEnabled bool, out io.Writer) error {
