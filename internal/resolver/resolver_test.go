@@ -152,8 +152,8 @@ func TestFrecencyRecentBeatsOld(t *testing.T) {
 		},
 		MaxAge: 10000,
 	}
-	recent := db.FrecencyScore("recent:main", 10000)
-	old := db.FrecencyScore("old:main", 10000)
+	recent := db.FrecencyScoreWithSiblings("recent:main", "recent:", 10000)
+	old := db.FrecencyScoreWithSiblings("old:main", "old:", 10000)
 	if recent <= old {
 		t.Errorf("recent %f should beat old %f", recent, old)
 	}
@@ -167,8 +167,8 @@ func TestFrecencyHighScoreBeatsLow(t *testing.T) {
 		},
 		MaxAge: 10000,
 	}
-	high := db.FrecencyScore("high:main", 10000)
-	low := db.FrecencyScore("low:main", 10000)
+	high := db.FrecencyScoreWithSiblings("high:main", "high:", 10000)
+	low := db.FrecencyScoreWithSiblings("low:main", "low:", 10000)
 	if high <= low {
 		t.Errorf("high %f should beat low %f", high, low)
 	}
@@ -176,7 +176,7 @@ func TestFrecencyHighScoreBeatsLow(t *testing.T) {
 
 func TestFrecencyMissingKey(t *testing.T) {
 	db := NewVisitsDB()
-	if db.FrecencyScore("nope:main", 10000) != 0 {
+	if db.FrecencyScoreWithSiblings("nope:main", "nope:", 10000) != 0 {
 		t.Error("missing key should be 0")
 	}
 }
@@ -414,7 +414,7 @@ func TestDisambiguationTriggered(t *testing.T) {
 	results := []Target{
 		{Score: 0.50}, {Score: 0.48},
 	}
-	if !NeedsDisambiguation(results, 0.10) {
+	if !NeedsDisambiguation(results, DefaultDisambiguationThreshold) {
 		t.Error("expected disambiguation")
 	}
 }
@@ -423,21 +423,21 @@ func TestDisambiguationNotTriggered(t *testing.T) {
 	results := []Target{
 		{Score: 0.90}, {Score: 0.30},
 	}
-	if NeedsDisambiguation(results, 0.10) {
+	if NeedsDisambiguation(results, DefaultDisambiguationThreshold) {
 		t.Error("should not need disambiguation")
 	}
 }
 
 func TestDisambiguationSingle(t *testing.T) {
 	results := []Target{{Score: 0.90}}
-	if NeedsDisambiguation(results, 0.10) {
+	if NeedsDisambiguation(results, DefaultDisambiguationThreshold) {
 		t.Error("single result should not need disambiguation")
 	}
 }
 
 func TestDisambiguationZeroScore(t *testing.T) {
 	results := []Target{{Score: 0}, {Score: 0}}
-	if NeedsDisambiguation(results, 0.10) {
+	if NeedsDisambiguation(results, DefaultDisambiguationThreshold) {
 		t.Error("zero scores should not trigger disambiguation")
 	}
 }
