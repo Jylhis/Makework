@@ -9,7 +9,6 @@ import (
 
 	"github.com/jylhis/makework/internal/catalog"
 	"github.com/jylhis/makework/internal/config"
-	"github.com/jylhis/makework/internal/integration"
 	"github.com/jylhis/makework/internal/repo"
 	"github.com/jylhis/makework/internal/status"
 	"github.com/jylhis/makework/internal/worktree"
@@ -130,10 +129,6 @@ func newWtListCmd() *cobra.Command {
 					}
 				}
 			}
-			_ = progressive
-			_ = noProgressive
-			_ = full
-
 			if format == "json" {
 				return json.NewEncoder(out).Encode(entries)
 			}
@@ -243,21 +238,7 @@ func removeOneWorktree(
 		}
 	}
 
-	state, err := integration.Check(resolved.Repo.Path, branch, defaultBranch)
-	if err != nil {
-		fmt.Fprintf(out, "Branch %s kept (integration check failed: %v)\n", branch, err)
-		return nil
-	}
-	if state == integration.StateDiverged && !forceDelete {
-		fmt.Fprintf(out, "Branch %s kept (diverged from %s; use -D to force delete)\n",
-			branch, defaultBranch)
-		return nil
-	}
-	if err := repo.DeleteBranch(resolved.Repo.Path, branch, forceDelete); err != nil {
-		fmt.Fprintf(out, "Branch %s not deleted: %v\n", branch, err)
-		return nil
-	}
-	fmt.Fprintf(out, "Deleted branch: %s (%s)\n", branch, state)
+	deleteBranchAfterRemove(out, resolved.Repo.Path, branch, defaultBranch, forceDelete)
 	return nil
 }
 

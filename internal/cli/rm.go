@@ -2,7 +2,7 @@ package cli
 
 import (
 	"fmt"
-	"strings"
+	"io"
 
 	"github.com/jylhis/makework/internal/integration"
 	"github.com/jylhis/makework/internal/repo"
@@ -56,29 +56,35 @@ func newRmCmd() *cobra.Command {
 				return nil
 			}
 
-			state, err := integration.Check(resolved.Repo.Path, refName, defaultBranch)
-			if err != nil {
-				fmt.Fprintf(out, "Branch %s kept (integration check failed: %v)\n", refName, err)
-				return nil
-			}
-
-			if state == integration.StateDiverged && !forceDelete {
-				fmt.Fprintf(out, "Branch %s kept (diverged from %s; use -D to force delete)\n",
-					refName, defaultBranch)
-				return nil
-			}
-
-			if err := repo.DeleteBranch(resolved.Repo.Path, refName, forceDelete); err != nil {
-				fmt.Fprintf(out, "Branch %s not deleted: %v\n", refName, err)
-				return nil
-			}
-			fmt.Fprintf(out, "Deleted branch: %s (%s)\n", refName, state)
+			deleteBranchAfterRemove(out, resolved.Repo.Path, refName, defaultBranch, forceDelete)
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&keepBranch, "keep-branch", false, "Do not delete the branch after removing the worktree")
 	cmd.Flags().BoolVarP(&forceDelete, "force-delete", "D", false, "Force-delete the branch even if not integrated")
 	return silenceSubcommand(cmd)
+}
+
+// deleteBranchAfterRemove deletes branch once its worktree is gone,
+// unless integration.Check classifies it as diverged and forceDelete is
+// not set. It reports the outcome to out and never returns an error: a
+// kept or undeletable branch is not a failure of the remove itself.
+func deleteBranchAfterRemove(out io.Writer, repoPath, branch, defaultBranch string, forceDelete bool) {
+	state, err := integration.Check(repoPath, branch, defaultBranch)
+	if err != nil {
+		fmt.Fprintf(out, "Branch %s kept (integration check failed: %v)\n", branch, err)
+		return
+	}
+	if state == integration.StateDiverged && !forceDelete {
+		fmt.Fprintf(out, "Branch %s kept (diverged from %s; use -D to force delete)\n",
+			branch, defaultBranch)
+		return
+	}
+	if err := repo.DeleteBranch(repoPath, branch, forceDelete); err != nil {
+		fmt.Fprintf(out, "Branch %s not deleted: %v\n", branch, err)
+		return
+	}
+	fmt.Fprintf(out, "Deleted branch: %s (%s)\n", branch, state)
 }
 
 // splitTarget accepts either "project/ref" or "project@ref" and returns
@@ -94,9 +100,7 @@ func splitTarget(target string) (project, ref string, ok bool) {
 			return project, ref, true
 		}
 	}
-	// Strict mode: a single token like "repo" is not a valid rm target.
-	if !strings.ContainsAny(target, "/@") {
-		return "", "", false
-	}
+	// Strict mode: a single token like "repo" with no '/' or '@'
+	// separator is not a valid rm target.
 	return "", "", false
 }
