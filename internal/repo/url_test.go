@@ -22,6 +22,7 @@ func TestParseRemoteURL(t *testing.T) {
 		{"http", "http://gitlab.internal/group/repo.git", ParsedURL{Host: "gitlab.internal", Segments: []string{"group", "repo"}}, true},
 		{"trims whitespace", "  https://github.com/user/repo.git  ", ParsedURL{Host: "github.com", Segments: []string{"user", "repo"}}, true},
 		{"https with port", "https://gitlab.example.com:8443/group/repo.git", ParsedURL{Host: "gitlab.example.com", Segments: []string{"group", "repo"}}, true},
+		{"https trailing slash dot-git", "https://github.com/user/repo/.git", ParsedURL{Host: "github.com", Segments: []string{"user", "repo"}}, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -99,12 +99,21 @@ func splitPathSegments(path string) []string {
 	}
 	last := out[len(out)-1]
 	if stripped := strings.TrimSuffix(last, ".git"); stripped != last {
-		// Stripping ".git" can leave an unsafe segment (e.g. ".git" alone
-		// becomes "", or "..git" becomes "."), so re-validate just it.
-		if !isSafeSegment(stripped) {
+		switch {
+		case stripped == "":
+			// A trailing "/.git" leaves an empty segment; drop it and keep
+			// the preceding segments (e.g. "user/repo/.git" -> [user, repo]).
+			out = out[:len(out)-1]
+		case !isSafeSegment(stripped):
+			// Stripping ".git" can leave an unsafe segment (e.g. "..git"
+			// becomes "."), so re-validate just it.
 			return nil
+		default:
+			out[len(out)-1] = stripped
 		}
-		out[len(out)-1] = stripped
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
