@@ -103,20 +103,8 @@ func (db *VisitsDB) Compact() {
 	db.Entries = filtered
 }
 
-// FrecencyScore is the time-decayed score for key relative to now.
-func (db *VisitsDB) FrecencyScore(key string, now uint64) float64 {
-	for _, e := range db.Entries {
-		if e.Key == key {
-			elapsed := float64(now - e.LastVisited)
-			timeWeight := 1.0 / (1.0 + elapsed/3600.0)
-			return e.Score * timeWeight
-		}
-	}
-	return 0
-}
-
-// FrecencyScoreWithSiblings is FrecencyScore for key plus half-weight
-// credit for any sibling entry under the same repoPrefix.
+// FrecencyScoreWithSiblings is the time-decayed score for key plus
+// half-weight credit for any sibling entry under the same repoPrefix.
 func (db *VisitsDB) FrecencyScoreWithSiblings(key, repoPrefix string, now uint64) float64 {
 	var score float64
 	for _, e := range db.Entries {
