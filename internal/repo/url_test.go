@@ -55,6 +55,15 @@ func TestParseRemoteURLRejects(t *testing.T) {
 		"http://127.0.0.1/org/\ntouch /tmp/pwn #/repo.git",
 		"https://github.com/org/repo\r.git",
 		"git@github.com:org/repo\tname.git",
+		// Missing path separator: no "/" after host (ssh) or no ":" (scp).
+		"ssh://github.com",
+		"git@github.com",
+		// Path with no non-empty segments.
+		"https://github.com//",
+		// Stripping a trailing ".git" must not leave an unsafe or empty
+		// segment: "..git" -> "." (unsafe), and a bare "/.git" -> empty.
+		"https://github.com/org/..git",
+		"https://github.com/.git",
 	} {
 		if _, ok := ParseRemoteURL(bad); ok {
 			t.Errorf("expected %q to fail", bad)
