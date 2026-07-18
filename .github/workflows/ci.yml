@@ -161,7 +161,7 @@ jobs:
         id: go_version
         run: echo "version=$(cat VERSION)" >> "$GITHUB_OUTPUT"
       - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f
         with:
           args: -Dsonar.projectVersion=${{ steps.go_version.outputs.version }}
         env:
